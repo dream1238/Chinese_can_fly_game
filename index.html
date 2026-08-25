@@ -846,13 +846,17 @@ function distSeg(px, py, ax, ay, bx, by) {
 }
 /* 航道 X 坐标：N 条固定航道对应上方 N 个刷新点 */
 const laneX = (lanes, i) => CONFIG.W * (i + 1) / (lanes + 1);
+/* 当前登录账号（数据命名空间依据）。
+   注意：必须用独立变量而非 S.currentUser——S 对象字面量初始化自身字段时就会调用 storeGet，
+   此时 S 尚未定义（TDZ 死区）会导致脚本崩溃黑屏。登录/注销后均通过 reload 重新初始化，无需同步。 */
+let CURRENT_USER = getCurrentUser();
 /* 读/写持久化数据（自动按当前登录账号命名空间隔离，互不干扰） */
 const storeGet = (k, d) => {
-  const key = S.currentUser ? 'ccf_u_' + S.currentUser + '_' + k : k;
+  const key = CURRENT_USER ? 'ccf_u_' + CURRENT_USER + '_' + k : k;
   try { const v = localStorage.getItem(key); return v === null ? d : JSON.parse(v); } catch (e) { return d; }
 };
 const storeSet = (k, v) => {
-  const key = S.currentUser ? 'ccf_u_' + S.currentUser + '_' + k : k;
+  const key = CURRENT_USER ? 'ccf_u_' + CURRENT_USER + '_' + k : k;
   try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {}
 };
 
@@ -1092,7 +1096,7 @@ function spawnGoldPlane() {
 
 /* ==================== 4. 游戏全局状态 ==================== */
 const S = {
-  currentUser: getCurrentUser(),   // 当前登录账号（数据命名空间依据，须为首字段）
+  currentUser: CURRENT_USER,   // 当前登录账号（与独立变量保持一致）
   state: 'menu',              // menu | guide | shop | playing | paused | winAnim | loseAnim | clearScreen | gameover | victory
   time: 0, levelTime: 0,
   score: 0, lives: 3, level: 1, deaths: 0,
