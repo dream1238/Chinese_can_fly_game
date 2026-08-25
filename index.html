@@ -264,6 +264,19 @@ html, body {
   font-size:.78em; letter-spacing:.08em; color:#ffd76e;
 }
 .gold-bar.gold-done { border-color:rgba(255,215,110,.3); background:rgba(255,215,110,.03); color:rgba(255,215,110,.55); }
+/* 登录界面 */
+.login-field { display:flex; flex-direction:column; gap:.3em; text-align:left; margin:.35em 0; }
+.login-field label { font-size:.75em; color:#9fb4c8; letter-spacing:.12em; }
+.login-field input {
+  font:inherit; font-size:.95em; color:#eaf6ff; letter-spacing:.15em; padding:.45em .8em;
+  background:rgba(0,229,255,.05); border:1px solid rgba(0,229,255,.45); outline:none; transition:border-color .15s, box-shadow .15s;
+}
+.login-field input:focus { border-color:#7cfffb; box-shadow:0 0 12px rgba(0,229,255,.35); }
+.login-field input::placeholder { color:rgba(159,180,200,.5); }
+/* 移动端：输入框字号 ≥16px 防止 iOS 聚焦自动放大 */
+@media (pointer: coarse) { .login-field input { font-size:16px; } }
+.logout-btn { font-size:.72em; padding:.4em 1.4em; border-color:rgba(255,59,92,.55); color:#ff8fa3; background:rgba(255,59,92,.06); }
+.logout-btn:hover { background:rgba(255,59,92,.18); color:#fff; box-shadow:0 0 14px rgba(255,59,92,.5); }
 /* 段位行（首页）：段位文字 + 查看详情小按钮同行 */
 .rank-menu-row { display:flex; align-items:center; gap:.8em; }
 .rank-menu-row .hint { margin:0; }
@@ -368,8 +381,24 @@ html, body {
       <div class="skill-num" id="skill-num"></div>
     </button>
 
+    <!-- 登录界面（进入首页前必须登录） -->
+    <div class="screen" id="scr-login">
+      <div class="game-title">中国人能飞</div>
+      <div class="game-sub">CHINESE PEOPLE CAN FLY</div>
+      <div class="panel">
+        <div class="login-field"><label>账户名</label><input id="login-name" maxlength="12" placeholder="请输入账户名" autocomplete="off"></div>
+        <div class="login-field"><label>密码（6 位数字）</label><input id="login-pwd" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位数字密码"></div>
+        <div class="hint" id="login-msg"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="login">登 录</button>
+        <button class="btn" data-action="register">注 册</button>
+      </div>
+      <div class="hint">新用户注册后获得全新数据 · 数据保存在本浏览器（同一浏览器多账号独立）</div>
+    </div>
+
     <!-- 开始界面 -->
-    <div class="screen light show" id="scr-menu">
+    <div class="screen light" id="scr-menu">
       <div class="menu-watermark">开发者水印：摇号YANG</div>
       <div class="menu-tag">部分图片及音乐素材来源于网络。如有侵权请联系删除</div>
       <div class="game-title">中国人能飞</div>
@@ -394,6 +423,8 @@ html, body {
         <button class="btn" data-action="backpack">🎒 背包</button>
       </div>
       <div class="hint">ENTER 开始 · P 暂停 · 方向键/WASD 移动 · 空格/J 射击 · SHIFT 低速 · B 炸弹</div>
+      <div class="hint" id="menu-user">👤 当前账号：—</div>
+      <button class="btn logout-btn" data-action="logout">注销账户</button>
       <div class="hint" id="orient-hint">📱 建议横屏游玩体验更佳</div>
     </div>
 
@@ -815,9 +846,127 @@ function distSeg(px, py, ax, ay, bx, by) {
 }
 /* 航道 X 坐标：N 条固定航道对应上方 N 个刷新点 */
 const laneX = (lanes, i) => CONFIG.W * (i + 1) / (lanes + 1);
-/* 读/写持久化数据 */
-const storeGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
-const storeSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+/* 读/写持久化数据（自动按当前登录账号命名空间隔离，互不干扰） */
+const storeGet = (k, d) => {
+  const key = S.currentUser ? 'ccf_u_' + S.currentUser + '_' + k : k;
+  try { const v = localStorage.getItem(key); return v === null ? d : JSON.parse(v); } catch (e) { return d; }
+};
+const storeSet = (k, v) => {
+  const key = S.currentUser ? 'ccf_u_' + S.currentUser + '_' + k : k;
+  try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {}
+};
+
+/* ==================== 账号系统（注册 / 登录 / 注销 / 数据隔离） ==================== */
+const ACCOUNTS_KEY = 'ccf_accounts';
+const CURR_USER_KEY = 'ccf_current_user';
+const MIGRATED_KEY = 'ccf_migrated_data';   // 旧版本无账号数据暂存（导入开发者账号 YH）
+/* 密码哈希（6 位数字密码 + 用户名盐，本地账号足够） */
+function hashPwd(u, p) {
+  let h = 5381; const s = u + ':' + p;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+function getAccounts() { try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)) || {}; } catch (e) { return {}; } }
+function setAccounts(a) { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(a)); }
+function getCurrentUser() { try { return localStorage.getItem(CURR_USER_KEY) || ''; } catch (e) { return ''; } }
+function setCurrentUser(u) { localStorage.setItem(CURR_USER_KEY, u); }
+/* 注册：账户名 + 6 位数字密码，新用户为全新数据 */
+function registerUser(name, pwd) {
+  if (!/^[一-龥A-Za-z0-9_]{1,12}$/.test(name)) return { ok: false, msg: '账户名限 1-12 位中文/字母/数字/下划线' };
+  if (!/^\d{6}$/.test(pwd)) return { ok: false, msg: '密码必须为 6 位数字' };
+  const acc = getAccounts();
+  if (acc[name]) return { ok: false, msg: '该账户名已存在，请直接登录' };
+  acc[name] = { pwd: hashPwd(name, pwd), created: Date.now() };
+  setAccounts(acc);
+  reportStat('register');
+  return { ok: true };
+}
+/* 登录：校验后写入当前用户（页面随后 reload 以载入该用户数据） */
+function loginUser(name, pwd) {
+  const acc = getAccounts();
+  if (!acc[name] || acc[name].pwd !== hashPwd(name, pwd)) return { ok: false, msg: '账户名或密码错误' };
+  setCurrentUser(name);
+  return { ok: true };
+}
+/* 注销：清除该账户全部数据（含账号与密码）并退出登录 */
+function logoutUser() {
+  const u = S.currentUser || getCurrentUser();
+  if (u) {
+    const prefix = 'ccf_u_' + u + '_';
+    const del = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(prefix) === 0) del.push(k); }
+    del.forEach(k => localStorage.removeItem(k));
+    const acc = getAccounts(); delete acc[u]; setAccounts(acc);
+    reportStat('logout');
+  }
+  localStorage.removeItem(CURR_USER_KEY);
+}
+/* 旧版本数据迁移：首次加载时把无账号时代的全部键打包暂存 */
+function migrateLegacyData() {
+  if (localStorage.getItem(MIGRATED_KEY) !== null || localStorage.getItem(ACCOUNTS_KEY) !== null) return;
+  const pack = {};
+  for (const k in CONFIG.storage) {
+    const raw = localStorage.getItem(CONFIG.storage[k]);
+    if (raw !== null) pack[CONFIG.storage[k]] = raw;
+  }
+  if (Object.keys(pack).length) localStorage.setItem(MIGRATED_KEY, JSON.stringify(pack));
+}
+/* 把暂存的旧数据导入指定账号（开发者账号 YH 专用） */
+function importMigratedTo(user) {
+  const raw = localStorage.getItem(MIGRATED_KEY);
+  if (!raw) return;
+  try {
+    const pack = JSON.parse(raw);
+    for (const k in pack) localStorage.setItem('ccf_u_' + user + '_' + k, pack[k]);
+  } catch (e) {}
+  localStorage.removeItem(MIGRATED_KEY);
+}
+/* 预置开发者账号 YH（密码 456789），并导入旧版本游玩数据 */
+function ensureDevAccount() {
+  const acc = getAccounts();
+  if (!acc['YH']) {
+    acc['YH'] = { pwd: hashPwd('YH', '456789'), created: Date.now(), dev: true };
+    setAccounts(acc);
+    importMigratedTo('YH');   // 旧数据导入 YH：刚登进去即完美还原
+  }
+}
+/* 监测上报（本地监测服务 http://localhost:8765；远程/离线时静默失败不影响游戏） */
+function reportStat(type, extra) {
+  try {
+    fetch('http://localhost:8765/api/track', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ type, user: S.currentUser || '', ts: Date.now() }, extra || {})),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) {}
+}
+/* 登录 / 注册 / 注销动作（成功登录后 reload 以载入该账号数据） */
+function loginMsg(t, c) { const el = $('login-msg'); el.textContent = t; el.style.color = c || '#ff8fa3'; }
+function doLogin() {
+  const name = $('login-name').value.trim();
+  const pwd = $('login-pwd').value.trim();
+  if (!name || !pwd) { loginMsg('请输入账户名和 6 位数字密码'); return; }
+  const r = loginUser(name, pwd);
+  if (!r.ok) { loginMsg(r.msg); return; }
+  AudioSys.play('click');
+  location.reload();   // 重新加载：S 按该账号命名空间载入数据
+}
+function doRegister() {
+  const name = $('login-name').value.trim();
+  const pwd = $('login-pwd').value.trim();
+  if (!name || !pwd) { loginMsg('请输入账户名和 6 位数字密码'); return; }
+  const r = registerUser(name, pwd);
+  if (!r.ok) { loginMsg(r.msg); return; }
+  setCurrentUser(name);   // 注册成功自动登录
+  AudioSys.play('redPacket');
+  location.reload();      // 新用户：命名空间为空 → 全新数据
+}
+function doLogout() {
+  if (!confirm('确定注销账户「' + (S.currentUser || '') + '」吗？\n将清除该账户的全部游玩数据（含账号与密码），不可恢复！')) return;
+  AudioSys.play('click');
+  logoutUser();
+  location.reload();   // 回到登录页
+}
 
 /* ---------- 留存功能工具（段位 / 日志 / 每日彩蛋） ---------- */
 /* 本地时区日期 YYYYMMDD（勿用 toISOString，那是 UTC 会跨天错位） */
@@ -943,6 +1092,7 @@ function spawnGoldPlane() {
 
 /* ==================== 4. 游戏全局状态 ==================== */
 const S = {
+  currentUser: getCurrentUser(),   // 当前登录账号（数据命名空间依据，须为首字段）
   state: 'menu',              // menu | guide | shop | playing | paused | winAnim | loseAnim | clearScreen | gameover | victory
   time: 0, levelTime: 0,
   score: 0, lives: 3, level: 1, deaths: 0,
@@ -1051,7 +1201,7 @@ const AudioSys = {
   /* 确保菜单 BGM 在播放：若 BGM 元素处于暂停（曾被自动播放策略拦截）则重新起播 */
   ensureMenuBGM() {
     if (!this.unlocked) return;
-    if (!['menu', 'guide', 'shop'].includes(S.state)) return;
+    if (!['menu', 'guide', 'shop', 'login'].includes(S.state)) return;
     const el = this.loaded['menu'] && this.loaded['menu'][0];
     const playing = this.currentBgm && !(el && el.paused);
     if (this.currentBgmKey !== 'menu' || !playing) this.playBGM('menu');
@@ -1417,6 +1567,9 @@ document.addEventListener('click', e => {
     case 'backpack-exit': if (S.state === 'backpack') closeBackpack(); break;
     case 'rank':        if (S.state === 'menu') openRank(); break;
     case 'rank-exit':   if (S.state === 'rank') closeRank(); break;
+    case 'login':       doLogin(); break;
+    case 'register':    doRegister(); break;
+    case 'logout':      if (S.state === 'menu') doLogout(); break;
     case 'use-banner':  if (S.state === 'backpack') useEquip('banner'); break;
     case 'use-eight':   if (S.state === 'backpack') useEquip('eight'); break;
     case 'use-basin':   if (S.state === 'backpack') useEquip('basin'); break;
@@ -4375,6 +4528,25 @@ window.addEventListener('beforeunload', () => {
 
 /* 初始化 */
 function init() {
+  // ---- 账号系统初始化 ----
+  migrateLegacyData();                       // 1) 打包旧版本无账号数据
+  ensureDevAccount();                        // 2) 预置开发者账号 YH / 456789 并导入旧数据
+  if (!S.currentUser) {
+    // 无登录用户：自动登录开发者账号 YH（首次进入即还原旧数据）；否则显示登录页
+    if (getAccounts()['YH']) { setCurrentUser('YH'); location.reload(); return; }
+  }
+  if (!S.currentUser) {
+    // 已注销或非本机：显示登录页，不进入首页
+    showScreen('scr-login');
+    S.state = 'login';
+    reportStat('visit');   // 访问人次上报（本地监测）
+    setInterval(() => reportStat('online'), 30000);   // 在线心跳（30 秒）
+  } else {
+    $('menu-user').textContent = '👤 当前账号：' + S.currentUser;
+    showScreen('scr-menu');
+    reportStat('visit');   // 访问人次上报（本地监测）
+    setInterval(() => reportStat('online'), 30000);   // 在线心跳（30 秒）
+  }
   // 背景星星
   for (let i = 0; i < CONFIG.effects.starCount; i++)
     S.stars.push({ x: rand(0, CONFIG.W), y: rand(0, CONFIG.H), r: rand(0.6, 2), speed: rand(15, 60), tw: rand(0, PI2), c: pick(['#eaf6ff', '#7cfffb', '#b388ff']) });
@@ -4397,10 +4569,13 @@ function init() {
   applySound(S.soundOn);   // 同步初始声音开关状态
   $('btn-sound').classList.toggle('off', !S.soundOn);
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
-  updateMenuStats();
+  if (S.currentUser) updateMenuStats();   // 登录页不刷新菜单统计
   resize();
   requestAnimationFrame(loop);
 }
+/* 登录页输入框：Enter 提交登录 */
+$('login-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLogin(); } });
+$('login-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('login-pwd').focus(); } });
 init();
 </script>
 </body>
