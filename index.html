@@ -407,7 +407,7 @@ html, body {
       <div class="panel">
         <div class="login-field"><label>账户名</label><input id="login-name" maxlength="12" placeholder="请输入账户名" autocomplete="off"></div>
         <div class="login-field"><label>密码（6 位数字）</label><input id="login-pwd" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位数字密码"></div>
-        <div class="hint login-msg" id="login-msg">登录模式：将载入该账号数据</div>
+        <div class="hint login-msg" id="login-msg"></div>
       </div>
       <button class="btn primary" data-action="submit-auth" id="btn-auth-submit">登 录</button>
       <div class="hint" style="margin-top:.9em">新用户注册后获得全新数据 · 数据保存在本浏览器（同一浏览器多账号独立）</div>
@@ -973,7 +973,7 @@ function setAuthMode(m) {
   AUTH_MODE = m;
   document.querySelectorAll('.auth-tab').forEach((el, i) => el.classList.toggle('active', (i === 0) === (m === 'login')));
   $('btn-auth-submit').textContent = m === 'login' ? '登 录' : '注 册';
-  loginMsg(m === 'login' ? '🔑 登录模式：将载入该账号数据' : '🆕 注册模式：新用户将获得全新数据', '#7cfffb');
+  $('login-msg').textContent = '';   // 清空提示（模式由 Tab 高亮标识）
 }
 /* 登录 / 注册 / 注销动作（成功登录后 reload 以载入该账号数据） */
 function loginMsg(t, c) { const el = $('login-msg'); el.textContent = t; el.style.color = c || '#ff3b5c'; }
