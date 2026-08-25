@@ -4557,8 +4557,13 @@ function init() {
   migrateLegacyData();                       // 1) 打包旧版本无账号数据
   ensureDevAccount();                        // 2) 预置开发者账号 YH / 456789 并导入旧数据
   if (!S.currentUser) {
-    // 无登录用户：自动登录开发者账号 YH（首次进入即还原旧数据）；否则显示登录页
-    if (getAccounts()['YH']) { setCurrentUser('YH'); location.reload(); return; }
+    // 仅首次使用（无首次标记）自动登录开发者账号 YH 还原旧数据；之后退出登录一律回登录页
+    if (localStorage.getItem('ccf_first_launch') === null && getAccounts()['YH']) {
+      localStorage.setItem('ccf_first_launch', '1');
+      setCurrentUser('YH');
+      location.reload();
+      return;
+    }
   }
   if (!S.currentUser) {
     // 已注销或非本机：显示登录页，不进入首页
