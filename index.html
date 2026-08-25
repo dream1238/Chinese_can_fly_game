@@ -843,8 +843,7 @@ const CONFIG = {
     speed: [90, 140],     // 下坠速度范围（慢速巡游）
     laneCount: 5,         // 出生航道数
     offsetRange: [2, 8],  // 开局延迟秒数范围（当天固定）
-    firstBonus: 5,        // 当天首次击落红包
-    repeatBonus: 2,       // 当天后续击落红包
+    firstBonus: 5,        // 击落红包奖励（每天仅出现一次，无后续奖励）
   },
   fireSupport: {          // 技能：火力支援（永久）
     duration: 10,         // 召唤生效时间（秒）
@@ -2269,8 +2268,8 @@ function killEnemy(e, giveScore = true) {
     // 每日彩蛋·金飞机：击落得红包（当天首拾奖励高，跨天惰性重置）
     if (e.type === 'goldplane') {
       checkGoldDay();   // 跨天惰性重置
-      const bonus = S.goldFirst ? CONFIG.gold.repeatBonus : CONFIG.gold.firstBonus;   // 当天首拾 +5，之后 +2
-      S.goldFirst = 1;
+      const bonus = CONFIG.gold.firstBonus;   // 每天仅出现一次，固定奖励 +5
+      S.goldFirst = 1;   // 标记当天已拿下（状态条显示用）
       storeSet(CONFIG.storage.goldFirst, 1);
       S.redPacketsRun += bonus; S.levelRP += bonus; S.totalRP += bonus;   // 红包按实际数量计入（HUD 右上角显示 +5）
       storeSet(CONFIG.storage.redPackets, S.totalRP);
