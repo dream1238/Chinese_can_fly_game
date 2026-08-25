@@ -280,6 +280,14 @@ html, body {
 }
 .login-field input:focus { border-color:#7cfffb; box-shadow:0 0 12px rgba(0,229,255,.35); }
 .login-field input::placeholder { color:rgba(159,180,200,.5); }
+/* 登录/注册 Tab 切换 */
+.auth-tabs { display:flex; gap:.6em; margin-bottom:.4em; }
+.auth-tab {
+  font:inherit; font-size:.85em; letter-spacing:.18em; cursor:pointer; padding:.45em 1.6em;
+  color:#9fb4c8; background:rgba(0,229,255,.04); border:1px solid rgba(0,229,255,.3); transition:all .15s;
+}
+.auth-tab.active { color:#eaf6ff; background:rgba(0,229,255,.16); border-color:#7cfffb; box-shadow:0 0 12px rgba(0,229,255,.35); }
+.login-msg { font-size:.85em; font-weight:700; letter-spacing:.1em; }
 /* 移动端：输入框字号 ≥16px 防止 iOS 聚焦自动放大 */
 @media (pointer: coarse) { .login-field input { font-size:16px; } }
 .logout-btn { font-size:.72em; padding:.4em 1.4em; border-color:rgba(255,59,92,.55); color:#ff8fa3; background:rgba(255,59,92,.06); }
@@ -388,20 +396,21 @@ html, body {
       <div class="skill-num" id="skill-num"></div>
     </button>
 
-    <!-- 登录界面（进入首页前必须登录） -->
+    <!-- 登录界面（进入首页前必须登录；登录/注册 Tab 切换） -->
     <div class="screen" id="scr-login">
       <div class="game-title">中国人能飞</div>
       <div class="game-sub">CHINESE PEOPLE CAN FLY</div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-action="tab-login">🔑 登 录</button>
+        <button class="auth-tab" data-action="tab-register">🆕 注 册</button>
+      </div>
       <div class="panel">
         <div class="login-field"><label>账户名</label><input id="login-name" maxlength="12" placeholder="请输入账户名" autocomplete="off"></div>
         <div class="login-field"><label>密码（6 位数字）</label><input id="login-pwd" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位数字密码"></div>
-        <div class="hint" id="login-msg"></div>
+        <div class="hint login-msg" id="login-msg">登录模式：将载入该账号数据</div>
       </div>
-      <div class="btn-row">
-        <button class="btn primary" data-action="login">登 录</button>
-        <button class="btn" data-action="register">注 册</button>
-      </div>
-      <div class="hint">新用户注册后获得全新数据 · 数据保存在本浏览器（同一浏览器多账号独立）</div>
+      <button class="btn primary" data-action="submit-auth" id="btn-auth-submit">登 录</button>
+      <div class="hint" style="margin-top:.9em">新用户注册后获得全新数据 · 数据保存在本浏览器（同一浏览器多账号独立）</div>
     </div>
 
     <!-- 开始界面 -->
@@ -958,27 +967,37 @@ function reportStat(type, extra) {
     }).catch(() => {});
   } catch (e) {}
 }
+/* 登录 / 注册 Tab 模式切换（登录页当前模式一目了然） */
+let AUTH_MODE = 'login';
+function setAuthMode(m) {
+  AUTH_MODE = m;
+  document.querySelectorAll('.auth-tab').forEach((el, i) => el.classList.toggle('active', (i === 0) === (m === 'login')));
+  $('btn-auth-submit').textContent = m === 'login' ? '登 录' : '注 册';
+  loginMsg(m === 'login' ? '🔑 登录模式：将载入该账号数据' : '🆕 注册模式：新用户将获得全新数据', '#7cfffb');
+}
 /* 登录 / 注册 / 注销动作（成功登录后 reload 以载入该账号数据） */
-function loginMsg(t, c) { const el = $('login-msg'); el.textContent = t; el.style.color = c || '#ff8fa3'; }
+function loginMsg(t, c) { const el = $('login-msg'); el.textContent = t; el.style.color = c || '#ff3b5c'; }
 function doLogin() {
   const name = $('login-name').value.trim();
   const pwd = $('login-pwd').value.trim();
-  if (!name || !pwd) { loginMsg('请输入账户名和 6 位数字密码'); return; }
+  if (!name || !pwd) { loginMsg('⚠️ 请输入账户名和 6 位数字密码'); return; }
   const r = loginUser(name, pwd);
-  if (!r.ok) { loginMsg(r.msg); return; }
+  if (!r.ok) { loginMsg('⚠️ ' + r.msg); return; }
   AudioSys.play('click');
   location.reload();   // 重新加载：S 按该账号命名空间载入数据
 }
 function doRegister() {
   const name = $('login-name').value.trim();
   const pwd = $('login-pwd').value.trim();
-  if (!name || !pwd) { loginMsg('请输入账户名和 6 位数字密码'); return; }
+  if (!name || !pwd) { loginMsg('⚠️ 请输入账户名和 6 位数字密码'); return; }
   const r = registerUser(name, pwd);
-  if (!r.ok) { loginMsg(r.msg); return; }
+  if (!r.ok) { loginMsg('⚠️ ' + r.msg); return; }
   setCurrentUser(name);   // 注册成功自动登录
   AudioSys.play('redPacket');
   location.reload();      // 新用户：命名空间为空 → 全新数据
 }
+/* 按当前 Tab 模式提交 */
+function doSubmitAuth() { AUTH_MODE === 'login' ? doLogin() : doRegister(); }
 function doLogout() {
   if (!confirm('确定注销账户「' + (S.currentUser || '') + '」吗？\n将清除该账户的全部游玩数据（含账号与密码），不可恢复！')) return;
   AudioSys.play('click');
@@ -1591,8 +1610,9 @@ document.addEventListener('click', e => {
     case 'backpack-exit': if (S.state === 'backpack') closeBackpack(); break;
     case 'rank':        if (S.state === 'menu') openRank(); break;
     case 'rank-exit':   if (S.state === 'rank') closeRank(); break;
-    case 'login':       doLogin(); break;
-    case 'register':    doRegister(); break;
+    case 'tab-login':    if (S.state === 'login') setAuthMode('login'); break;
+    case 'tab-register': if (S.state === 'login') setAuthMode('register'); break;
+    case 'submit-auth':  if (S.state === 'login') doSubmitAuth(); break;
     case 'logout':      if (S.state === 'menu') doLogout(); break;
     case 'session-out': if (S.state === 'menu') doSessionOut(); break;
     case 'use-banner':  if (S.state === 'backpack') useEquip('banner'); break;
@@ -4603,8 +4623,8 @@ function init() {
   resize();
   requestAnimationFrame(loop);
 }
-/* 登录页输入框：Enter 提交登录 */
-$('login-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLogin(); } });
+/* 登录页输入框：Enter 按当前 Tab 模式提交 */
+$('login-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSubmitAuth(); } });
 $('login-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('login-pwd').focus(); } });
 init();
 </script>
