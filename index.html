@@ -2051,8 +2051,9 @@ function updateFireSupport(dt) {
     }
   }
 }
-/* 领域：错乱时空 —— 每 12 秒 66% 概率进入时空静止 6 秒（世界冻结，英雄正常） */
+/* 领域：错乱时空 —— 每 12 秒 66% 概率进入时空静止 6 秒（世界冻结，英雄正常；需已使用该领域才触发） */
 function updateTimeField(dt) {
+  if (!S.timeFieldUsed) return;   // 未启用错乱时空：不触发时空静止
   if (S.timeStopT > 0) {
     S.timeStopT -= dt;
     if (S.timeStopT <= 0) {
@@ -2268,7 +2269,7 @@ function killEnemy(e, giveScore = true) {
     // 每日彩蛋·金飞机：击落得红包（当天首拾奖励高，跨天惰性重置）
     if (e.type === 'goldplane') {
       checkGoldDay();   // 跨天惰性重置
-      const bonus = S.goldFirst ? CONFIG.gold.firstBonus : CONFIG.gold.repeatBonus;
+      const bonus = S.goldFirst ? CONFIG.gold.repeatBonus : CONFIG.gold.firstBonus;   // 当天首拾 +5，之后 +2
       S.goldFirst = 1;
       storeSet(CONFIG.storage.goldFirst, 1);
       S.redPacketsRun += bonus; S.levelRP += bonus; S.totalRP += bonus;   // 红包按实际数量计入（HUD 右上角显示 +5）
