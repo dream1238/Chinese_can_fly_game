@@ -1,0 +1,4407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#05060f">
+<title>中国人能飞 · Chinese People Can Fly</title>
+<style>
+/* ==================== 基础样式 ==================== */
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body {
+  width:100%; height:100%; overflow:hidden; background:#02030a; color:#eaf6ff;
+  font-family:"Courier New","Consolas","Menlo","PingFang SC","Microsoft YaHei",monospace;
+  -webkit-user-select:none; user-select:none; touch-action:none;
+}
+#stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+/* 游戏容器：JS 按 16:9 逻辑分辨率 960x540 等比缩放 */
+#wrap {
+  position:relative; overflow:hidden; background:#05060f;
+  box-shadow:0 0 60px rgba(0,229,255,.15), 0 0 140px rgba(180,136,255,.12);
+}
+#wrap.danger { animation:dangerPulse .5s ease-in-out 4; }
+@keyframes dangerPulse {
+  0%,100% { box-shadow:0 0 60px rgba(0,229,255,.15), 0 0 140px rgba(180,136,255,.12); }
+  50%     { box-shadow:0 0 90px rgba(255,59,92,.8), 0 0 180px rgba(255,59,92,.5); }
+}
+#cv { position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+#cv.glitch { animation:glitchAnim .14s steps(2,end) 1; }
+@keyframes glitchAnim {
+  0%   { transform:translate(0); }
+  25%  { transform:translate(-5px,2px) skewX(1.5deg); filter:hue-rotate(50deg) saturate(2.4); }
+  50%  { transform:translate(4px,-2px); filter:hue-rotate(-70deg) saturate(1.6); }
+  75%  { transform:translate(-2px,1px); }
+  100% { transform:none; filter:none; }
+}
+/* 扫描线（CRT 质感覆盖层） */
+#scanlines {
+  position:absolute; inset:0; z-index:30; pointer-events:none; opacity:.55;
+  background:repeating-linear-gradient(0deg, rgba(255,255,255,.028) 0 1px, transparent 1px 3px);
+}
+
+/* ==================== HUD ==================== */
+#hud { position:absolute; inset:0; z-index:5; pointer-events:none; display:none; }
+#hud.show { display:block; }
+.hud-left { position:absolute; top:.7em; left:1em; display:flex; gap:1.2em; align-items:center; flex-wrap:wrap; }
+.hud-right { position:absolute; top:.7em; right:1em; display:flex; gap:1em; align-items:center; flex-wrap:wrap; }
+.hud-item {
+  font-size:.95em; letter-spacing:.08em; color:#7cfffb;
+  text-shadow:0 0 8px rgba(0,229,255,.7);
+}
+.hud-item b { color:#eaf6ff; font-weight:700; }
+.hud-item .ic { font-style:normal; }
+/* 我方血条（分段生命条） */
+.hp-seg {
+  display:inline-block; width:1.7em; height:.78em; margin-right:.28em; opacity:.14;
+  background:linear-gradient(90deg,#00e5ff,#7cfffb);
+  clip-path:polygon(10% 0, 100% 0, 90% 100%, 0 100%); transition:opacity .25s;
+}
+.hp-seg.on { opacity:1; filter:drop-shadow(0 0 5px #00e5ff); }
+.hp-seg.on.low { background:linear-gradient(90deg,#ff3b5c,#ff9f43); filter:drop-shadow(0 0 6px #ff3b5c); }
+#hud-shield { opacity:.2; } #hud-shield.on { opacity:1; text-shadow:0 0 8px #7cfffb; }
+
+/* 变身倒计时条 */
+#transform-bar {
+  position:absolute; top:2.8em; left:50%; transform:translateX(-50%); width:9em; z-index:5;
+  display:none; pointer-events:none;
+}
+#transform-bar.show { display:block; }
+#transform-bar .tlabel { font-size:.72em; color:#ff3b5c; letter-spacing:.3em; text-align:center; text-shadow:0 0 8px rgba(255,59,92,.9); }
+#transform-bar .tbg { height:.5em; margin-top:.2em; border:1px solid rgba(255,59,92,.6); background:rgba(255,59,92,.08); }
+#transform-bar .tfill { height:100%; width:100%; background:linear-gradient(90deg,#ff3b5c,#ff8fa3); box-shadow:0 0 10px #ff3b5c; }
+/* 高空飞行状态条 */
+#highfly-bar {
+  position:absolute; top:4.6em; left:50%; transform:translateX(-50%); width:9em; z-index:5;
+  display:none; pointer-events:none;
+}
+#highfly-bar.show { display:block; }
+#highfly-bar .tlabel { font-size:.72em; color:#eaf6ff; letter-spacing:.3em; text-align:center; text-shadow:0 0 8px rgba(255,255,255,.9); }
+#highfly-bar .tbg { height:.5em; margin-top:.2em; border:1px solid rgba(255,255,255,.55); background:rgba(255,255,255,.08); }
+#highfly-bar .tfill { height:100%; width:100%; background:linear-gradient(90deg,#ffffff,#c9d6e4); box-shadow:0 0 10px #ffffff; }
+/* 时空静止状态条（错乱时空领域） */
+#timefield-bar {
+  position:absolute; top:6.4em; left:50%; transform:translateX(-50%); width:9em; z-index:5;
+  display:none; pointer-events:none;
+}
+#timefield-bar.show { display:block; }
+#timefield-bar .tlabel { font-size:.72em; color:#d9c4ff; letter-spacing:.3em; text-align:center; text-shadow:0 0 8px rgba(180,136,255,.9); }
+#timefield-bar .tbg { height:.5em; margin-top:.2em; border:1px solid rgba(180,136,255,.6); background:rgba(180,136,255,.08); }
+#timefield-bar .tfill { height:100%; width:100%; background:linear-gradient(90deg,#b388ff,#7cfffb); box-shadow:0 0 10px #b388ff; }
+
+/* Boss 血条 */
+#bossbar { position:absolute; top:.9em; left:50%; transform:translateX(-50%); width:42%; z-index:5; display:none; pointer-events:none; }
+#bossbar.show { display:block; }
+#bossbar .blabel { font-size:.72em; letter-spacing:.35em; color:#b388ff; text-align:center; text-shadow:0 0 8px rgba(180,136,255,.9); }
+#bossbar .bbg { height:.85em; margin-top:.25em; border:1px solid rgba(180,136,255,.65); background:rgba(180,136,255,.07); box-shadow:0 0 12px rgba(180,136,255,.35); }
+#bossbar .bfill { height:100%; width:100%; background:linear-gradient(90deg,#b388ff,#ff3b5c); box-shadow:0 0 12px #b388ff; transition:width .12s linear; }
+
+/* ==================== 移动端按钮 ==================== */
+#mobile-ctrl { position:absolute; inset:0; z-index:6; pointer-events:none; display:none; }
+#mobile-ctrl.touch.on { display:block; }
+.mbtn {
+  position:absolute; pointer-events:auto; border-radius:50%; cursor:pointer;
+  font-family:inherit; letter-spacing:.1em; touch-action:none;
+  background:rgba(0,229,255,.07); border:1.5px solid rgba(0,229,255,.6);
+  color:#7cfffb; box-shadow:0 0 14px rgba(0,229,255,.25) inset;
+}
+.mbtn:active { background:rgba(0,229,255,.25); }
+#btn-fire {
+  right:1.1em; bottom:1.2em; width:4.8em; height:4.8em; font-size:1em;
+  border-color:rgba(255,59,92,.75); color:#ff8fa3;
+  box-shadow:0 0 16px rgba(255,59,92,.35) inset;
+}
+#btn-fire:active { background:rgba(255,59,92,.3); }
+#btn-bomb { right:6.5em; bottom:1.6em; width:3.4em; height:3.4em; font-size:.85em; }
+#btn-pause { right:1em; top:1em; width:2.9em; height:2.9em; font-size:.8em; }
+
+/* ==================== 声音开关按钮（喇叭 + ON/OFF 拨杆） ==================== */
+#btn-sound {
+  position:absolute; top:.9em; right:1em; z-index:40;
+  display:flex; align-items:center; gap:.55em;
+  background:rgba(3,6,16,.62); border:1px solid rgba(0,229,255,.45);
+  color:#7cfffb; font:inherit; font-size:.85em; letter-spacing:.18em; cursor:pointer;
+  padding:.38em .75em; transition:box-shadow .15s, border-color .15s, color .15s;
+}
+#btn-sound:hover { box-shadow:0 0 16px rgba(0,229,255,.5); }
+#btn-sound svg { width:1.55em; height:1.55em; flex:none; }
+#btn-sound .spk-body { fill:#7cfffb; }
+#btn-sound .wave { fill:none; stroke:#7cfffb; stroke-width:1.9; stroke-linecap:round; }
+#btn-sound .mute-x { fill:none; stroke:#ff3b5c; stroke-width:2.3; stroke-linecap:round; display:none; }
+#btn-sound .snd-switch {
+  position:relative; width:2.5em; height:1.2em; border-radius:1em;
+  background:rgba(0,229,255,.22); border:1px solid rgba(0,229,255,.6);
+}
+#btn-sound .snd-knob {
+  position:absolute; top:.13em; left:1.42em; width:.85em; height:.85em; border-radius:50%;
+  background:#7cfffb; box-shadow:0 0 8px #00e5ff; transition:left .18s, background .18s;
+}
+/* 静音状态：喇叭打叉 + 声波消失 + 拨杆滑到 OFF */
+#btn-sound.off { color:#ff8fa3; border-color:rgba(255,59,92,.55); }
+#btn-sound.off .spk-body { fill:#ff8fa3; }
+#btn-sound.off .wave { display:none; }
+#btn-sound.off .mute-x { display:block; }
+#btn-sound.off .snd-switch { background:rgba(255,59,92,.15); border-color:rgba(255,59,92,.55); }
+#btn-sound.off .snd-knob { left:.16em; background:#ff8fa3; box-shadow:0 0 8px #ff3b5c; }
+
+/* ==================== 火力支援技能图标（圆形，右下角） ==================== */
+#btn-skill {
+  position:absolute; right:1.2em; bottom:7em; z-index:6; width:4.2em; height:4.2em;
+  border-radius:50%; border:2px solid rgba(0,229,255,.7); background:rgba(5,8,20,.82);
+  overflow:hidden; padding:0; display:none; cursor:pointer; touch-action:none;
+}
+#btn-skill.show { display:block; }
+#btn-skill canvas { width:100%; height:100%; display:block; }
+#btn-skill .skill-cd { position:absolute; inset:0; pointer-events:none; }
+#btn-skill .skill-num {
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:1.15em; font-weight:700; color:#fff; text-shadow:0 0 6px #000, 0 0 10px #000; pointer-events:none;
+}
+#btn-skill.ready { border-color:#7cfffb; animation:skillPulse 1.6s ease-in-out infinite; }
+@keyframes skillPulse {
+  0%,100% { box-shadow:0 0 8px rgba(0,229,255,.4); }
+  50%     { box-shadow:0 0 18px rgba(0,229,255,.9); }
+}
+
+/* 开发者水印（右上角，半透明小字，不影响观感） */
+#watermark {
+  position:absolute; top:.2em; right:.45em; z-index:3; pointer-events:none;
+  font-size:.55em; letter-spacing:.14em; color:rgba(234,246,255,.32);
+  text-shadow:0 0 6px rgba(0,229,255,.25); white-space:nowrap;
+}
+/* 开始界面左上角开发者水印（与右上角水印一致） */
+.menu-watermark {
+  position:absolute; top:.2em; left:.45em; z-index:3; pointer-events:none;
+  font-size:.55em; letter-spacing:.14em; color:rgba(234,246,255,.32);
+  text-shadow:0 0 6px rgba(0,229,255,.25); white-space:nowrap;
+}
+/* 开始界面顶部素材声明 tag（仅主菜单显示） */
+.menu-tag {
+  position:absolute; top:.55em; left:50%; transform:translateX(-50%);
+  font-size:.6em; letter-spacing:.1em; color:rgba(159,180,200,.5); white-space:nowrap;
+}
+
+/* ==================== 全屏界面（菜单/暂停/结算/商店） ==================== */
+.screen {
+  position:absolute; inset:0; z-index:10; display:none; flex-direction:column;
+  align-items:center; justify-content:center; gap:1.1em; text-align:center;
+  background:rgba(3,6,16,.84); backdrop-filter:blur(3px); padding:1.6em;
+}
+.screen.show { display:flex; }
+.screen.light { background:rgba(3,6,16,.55); }
+
+.game-title {
+  font-size:3.4em; font-weight:900; letter-spacing:.14em; color:#eaf6ff; line-height:1.15;
+  text-shadow:0 0 10px #00e5ff, 0 0 32px #00e5ff, 0 0 70px #b388ff;
+  animation:titlePulse 2.8s ease-in-out infinite;
+}
+@keyframes titlePulse {
+  0%,100% { text-shadow:0 0 10px #00e5ff, 0 0 32px #00e5ff, 0 0 70px #b388ff; }
+  50%     { text-shadow:0 0 14px #7cfffb, 0 0 46px #00e5ff, 0 0 100px #b388ff; }
+}
+.game-sub { font-size:.95em; letter-spacing:.5em; color:#7cfffb; text-shadow:0 0 10px rgba(0,229,255,.6); }
+.stats-row { display:flex; gap:2em; font-size:.85em; color:#9fb4c8; letter-spacing:.12em; }
+.stats-row b { color:#ffe66d; }
+
+.btn {
+  font:inherit; font-size:.95em; letter-spacing:.18em; color:#7cfffb; cursor:pointer;
+  background:rgba(0,229,255,.06); border:1px solid rgba(0,229,255,.55);
+  padding:.62em 2.2em; box-shadow:0 0 12px rgba(0,229,255,.22) inset; transition:all .15s;
+}
+.btn:hover { background:rgba(0,229,255,.16); color:#fff; box-shadow:0 0 20px rgba(0,229,255,.55); }
+.btn.primary { border-color:rgba(180,136,255,.75); color:#d9c4ff; background:rgba(180,136,255,.08); box-shadow:0 0 12px rgba(180,136,255,.3) inset; }
+.btn.primary:hover { background:rgba(180,136,255,.2); color:#fff; box-shadow:0 0 22px rgba(180,136,255,.6); }
+.btn.danger { border-color:rgba(255,59,92,.7); color:#ff8fa3; background:rgba(255,59,92,.07); }
+.btn.danger:hover { background:rgba(255,59,92,.2); color:#fff; box-shadow:0 0 20px rgba(255,59,92,.6); }
+.btn-row { display:flex; gap:1.2em; flex-wrap:wrap; justify-content:center; }
+
+.screen h2 { font-size:2em; letter-spacing:.3em; color:#eaf6ff; text-shadow:0 0 18px #00e5ff; }
+.screen .panel {
+  min-width:min(24em, 82%); border:1px solid rgba(0,229,255,.35); background:rgba(0,229,255,.045);
+  padding:1.3em 2em; display:flex; flex-direction:column; gap:.55em; font-size:.9em; letter-spacing:.1em;
+}
+.panel .row { display:flex; justify-content:space-between; gap:2em; color:#9fb4c8; }
+.panel .row b { color:#eaf6ff; }
+.rating { font-size:2.6em; font-weight:900; letter-spacing:.2em; text-shadow:0 0 22px currentColor; }
+.rating.s { color:#ffe66d; } .rating.a { color:#7cfffb; } .rating.b { color:#b388ff; } .rating.c { color:#ff9f43; }
+
+.hint { font-size:.78em; color:#6c7f93; letter-spacing:.12em; }
+.screen .panel { max-height:60vh; overflow-y:auto; }
+.guide-divider { height:1px; width:100%; background:linear-gradient(90deg,transparent,rgba(0,229,255,.5),transparent); margin:.15em 0; }
+.prow { display:grid; grid-template-columns:1fr 1fr; gap:.6em; width:100%; max-width:34em; }
+.pcard { display:flex; align-items:center; gap:.6em; border:1px solid rgba(0,229,255,.28); background:rgba(0,229,255,.04); padding:.45em .6em; text-align:left; }
+.pcard canvas { width:2.6em; height:2.6em; flex:none; }
+.pinfo { font-size:.78em; color:#b8ccdd; letter-spacing:.06em; line-height:1.5; }
+.pinfo b { color:#7cfffb; }
+.intro-row { display:flex; flex-wrap:wrap; gap:.7em; justify-content:center; max-width:36em; }
+.intro-card { display:flex; align-items:center; gap:.7em; border:1px solid rgba(0,229,255,.3); background:rgba(0,229,255,.04); padding:.5em .8em; min-width:17em; text-align:left; }
+.intro-card canvas { width:3.2em; height:3.2em; flex:none; }
+.intro-card.boss { flex-direction:column; min-width:100%; padding:.8em; }
+.intro-card.boss canvas { width:11em; height:11em; }
+.ic-name { color:#7cfffb; letter-spacing:.1em; font-size:.92em; }
+.ic-name .ic-score { color:#ffe66d; margin-left:.5em; }
+.ic-desc { color:#9fb4c8; font-size:.76em; letter-spacing:.05em; margin-top:.25em; line-height:1.45; }
+.mode-card { border:1px solid rgba(0,229,255,.3); background:rgba(0,229,255,.04); padding:.8em 1.4em; margin:.45em 0; min-width:20em; }
+.mc-name { color:#7cfffb; font-size:1.05em; letter-spacing:.2em; }
+.mc-desc { color:#9fb4c8; font-size:.78em; margin-top:.35em; letter-spacing:.06em; line-height:1.55; }
+.shop-items {
+  display:flex; flex-direction:column; gap:.8em; max-width:34em; width:100%;
+  max-height:44%; overflow-y:auto; touch-action:pan-y; padding-right:.3em;
+}
+.shop-items::-webkit-scrollbar { width:6px; }
+.shop-items::-webkit-scrollbar-thumb { background:rgba(0,229,255,.35); border-radius:3px; }
+.shop-items::-webkit-scrollbar-track { background:rgba(0,229,255,.06); }
+.si-btns { display:flex; gap:.5em; }
+/* 本局佩戴装备确认条（敌机图鉴上方，仅展示） */
+.gear-bar {
+  border:1px dashed rgba(0,229,255,.4); background:rgba(0,229,255,.05);
+  padding:.5em 1em; max-width:36em; width:100%; text-align:center;
+  font-size:.8em; letter-spacing:.08em; color:#7cfffb;
+}
+/* 今日彩蛋状态条（金色系，已拿下时暗化） */
+.gold-bar {
+  border:1px dashed rgba(255,215,110,.55); background:rgba(255,215,110,.07);
+  padding:.45em 1em; max-width:36em; width:100%; text-align:center;
+  font-size:.78em; letter-spacing:.08em; color:#ffd76e;
+}
+.gold-bar.gold-done { border-color:rgba(255,215,110,.3); background:rgba(255,215,110,.03); color:rgba(255,215,110,.55); }
+/* 段位行（首页）：段位文字 + 查看详情小按钮同行 */
+.rank-menu-row { display:flex; align-items:center; gap:.8em; }
+.rank-menu-row .hint { margin:0; }
+.btn-sm { font-size:.72em; padding:.35em 1em; letter-spacing:.12em; }
+/* 段位图鉴 */
+.rank-current { border:1px solid rgba(0,229,255,.4); background:rgba(0,229,255,.05); padding:.9em 1.4em; max-width:34em; width:100%; }
+.rc-name { color:#eaf6ff; font-size:1.05em; letter-spacing:.15em; }
+.rc-name b { color:#ffd76e; }
+.rc-label { font-size:.72em; color:#9fb4c8; letter-spacing:.1em; margin-top:.6em; text-align:left; }
+.rc-label b { color:#b388ff; }
+.rc-bar { height:.6em; margin-top:.3em; border:1px solid rgba(0,229,255,.5); background:rgba(0,229,255,.07); }
+.rc-fill { height:100%; width:0; background:linear-gradient(90deg,#00e5ff,#7cfffb); transition:width .3s; }
+.rc-fill.task { background:linear-gradient(90deg,#b388ff,#ffd76e); }
+.rank-list { display:flex; flex-direction:column; gap:.55em; max-width:34em; width:100%; max-height:36%; overflow-y:auto; padding-right:.3em; }
+.rank-card { display:flex; align-items:center; gap:.8em; border:1px solid rgba(0,229,255,.22); background:rgba(0,229,255,.03); padding:.5em .8em; text-align:left; }
+.rank-card.cur { border-color:#ffd76e; box-shadow:0 0 10px rgba(255,215,110,.3); }
+.rank-card.next-t { border-color:rgba(180,136,255,.7); }
+.rank-medal { font-size:1.5em; flex:none; width:1.6em; text-align:center; }
+.rank-card .rc-info { flex:1; }
+.rank-card .rc-info .rc-t { color:#7cfffb; letter-spacing:.1em; font-size:.92em; }
+.rank-card .rc-info .rc-req { color:#9fb4c8; font-size:.72em; margin-top:.15em; letter-spacing:.04em; line-height:1.5; }
+.rank-card .rc-st { font-size:.78em; color:#3dffa2; letter-spacing:.08em; flex:none; }
+.rank-card .rc-st.pending { color:#ff9f43; }
+.shop-item { display:flex; align-items:center; gap:1em; border:1px solid rgba(0,229,255,.3); background:rgba(0,229,255,.04); padding:.7em 1em; text-align:left; }
+.shop-item canvas { width:3em; height:3em; flex:none; }
+.si-info { flex:1; }
+.si-name { color:#7cfffb; letter-spacing:.12em; }
+.si-status { font-size:.72em; letter-spacing:.1em; margin-left:.6em; color:#7cfffb; }
+.si-status.used { color:#6c7f93; }
+.si-desc { color:#9fb4c8; font-size:.75em; letter-spacing:.05em; margin-top:.3em; line-height:1.45; }
+.si-right { display:flex; flex-direction:column; align-items:flex-end; gap:.4em; }
+.si-price { color:#ffe66d; font-size:.85em; }
+.si-own { color:#9fb4c8; font-size:.75em; }
+.btn:disabled { opacity:.35; cursor:default; box-shadow:none; }
+.cat-label { align-self:stretch; text-align:center; color:#b388ff; letter-spacing:.35em; font-size:.78em; margin-top:.55em; text-shadow:0 0 8px rgba(180,136,255,.5); }
+.guide-list { font-size:.88em; color:#b8ccdd; line-height:1.9; letter-spacing:.08em; text-align:left; }
+.guide-list b { color:#7cfffb; }
+
+/* 商店/背包均已改用底部退出按钮，无右上角 ✕ */
+#shop-body { color:#b8ccdd; letter-spacing:.2em; font-size:.95em; }
+
+#orient-hint { display:none; color:#ffe66d; font-size:.85em; letter-spacing:.15em; }
+#orient-hint.show { display:block; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="wrap">
+    <canvas id="cv"></canvas>
+
+    <!-- HUD：分数 / 生命 / 关卡 / 道具数量 -->
+    <div id="hud">
+      <div class="hud-left">
+        <div class="hud-item">SCORE <b id="hud-score">0</b></div>
+        <div class="hud-item">HP <span class="hpbar" id="hud-hp"></span></div>
+        <div class="hud-item">LV.<b id="hud-level">1</b></div>
+        <div class="hud-item" id="hud-time-item">TIME <b id="hud-time">0:00</b></div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-item">🧧<b id="hud-rp">0</b></div>
+        <div class="hud-item">💣<b id="hud-bomb">0</b></div>
+        <div class="hud-item" id="hud-shield" title="护盾">🛡<b id="hud-shield-n">0</b></div>
+        <div class="hud-item" id="hud-basin" style="display:none">🎁聚宝盆</div>
+      </div>
+    </div>
+
+    <!-- 变身倒计时条 -->
+    <div id="transform-bar">
+      <div class="tlabel">变身 · TRANSFORM</div>
+      <div class="tbg"><div class="tfill" id="transform-fill"></div></div>
+    </div>
+
+    <!-- 高空飞行状态条 -->
+    <div id="highfly-bar">
+      <div class="tlabel">高空飞行 · HIGH FLY</div>
+      <div class="tbg"><div class="tfill" id="highfly-fill"></div></div>
+    </div>
+
+    <!-- 时空静止状态条 -->
+    <div id="timefield-bar">
+      <div class="tlabel">时空静止 · TIME FREEZE</div>
+      <div class="tbg"><div class="tfill" id="timefield-fill"></div></div>
+    </div>
+
+    <!-- Boss 血条 -->
+    <div id="bossbar">
+      <div class="blabel" id="bossbar-label">⚠ BOSS · 几何核心 ⚠</div>
+      <div class="bbg"><div class="bfill" id="bossbar-fill"></div></div>
+    </div>
+
+    <!-- 移动端虚拟按钮 -->
+    <div id="mobile-ctrl">
+      <button class="mbtn" id="btn-pause" title="暂停">⏸</button>
+      <button class="mbtn" id="btn-bomb" title="炸弹">💣</button>
+      <button class="mbtn" id="btn-fire" title="射击">FIRE</button>
+    </div>
+
+    <!-- 火力支援技能图标（王者荣耀式圆形技能，右下角；点击/M 键释放） -->
+    <button id="btn-skill" title="火力支援 (M)">
+      <canvas id="skill-icon" width="64" height="64"></canvas>
+      <div class="skill-cd" id="skill-cd"></div>
+      <div class="skill-num" id="skill-num"></div>
+    </button>
+
+    <!-- 开始界面 -->
+    <div class="screen light show" id="scr-menu">
+      <div class="menu-watermark">开发者水印：摇号YANG</div>
+      <div class="menu-tag">部分图片及音乐素材来源于网络。如有侵权请联系删除</div>
+      <div class="game-title">中国人能飞</div>
+      <div class="game-sub">CHINESE PEOPLE CAN FLY</div>
+      <div class="stats-row">
+        <span>🧧 红包 <b id="menu-rp">0</b></span>
+        <span>关卡最高分 <b id="menu-high">0</b></span>
+        <span>无尽最高分 <b id="menu-high-endless">0</b></span>
+      </div>
+      <div class="stats-row" style="font-size:.75em">
+        <span>飞行日志：🕹 <b id="menu-games">0</b> 局 · ✈ <b id="menu-kills">0</b> 机</span>
+      </div>
+      <div class="rank-menu-row">
+        <span class="hint" id="menu-rank-line">🏅 段位：见习机长</span>
+        <button class="btn btn-sm" data-action="rank">查看段位详情</button>
+      </div>
+      <div class="hint" id="menu-daily-line">📅 无尽 · 今日 0 / 昨日 ——</div>
+      <div class="btn-row" style="margin-top:.6em">
+        <button class="btn primary" data-action="start">▶ 开始游戏</button>
+        <button class="btn" data-action="guide">操作指引</button>
+        <button class="btn" data-action="shop">🛒 商店</button>
+        <button class="btn" data-action="backpack">🎒 背包</button>
+      </div>
+      <div class="hint">ENTER 开始 · P 暂停 · 方向键/WASD 移动 · 空格/J 射击 · SHIFT 低速 · B 炸弹</div>
+      <div class="hint" id="orient-hint">📱 建议横屏游玩体验更佳</div>
+    </div>
+
+    <!-- 新手操作指引 -->
+    <div class="screen" id="scr-guide">
+      <h2>操作指引</h2>
+      <div class="panel guide-panel">
+        <div class="guide-list">
+          ⌨️ <b>键盘</b>：方向键/WASD 移动 · 空格/J 射击 · SHIFT 低速 · B 炸弹 · P 暂停 · ENTER 确认<br>
+          📱 <b>触屏</b>：拖动屏幕移动飞机 · FIRE 按钮射击 · 💣 按钮使用炸弹
+        </div>
+        <div class="guide-divider"></div>
+        <div class="guide-list"><b>道具图鉴</b>（击毁敌机掉落，靠近自动拾取）</div>
+        <div class="prow">
+          <div class="pcard"><canvas id="gi-bomb" width="44" height="44"></canvas><div class="pinfo"><b>炸弹</b> —— 按 B 清屏，消灭全场敌机与子弹，对 Boss 仅造成一定伤害</div></div>
+          <div class="pcard"><canvas id="gi-shield" width="44" height="44"></canvas><div class="pinfo"><b>护盾</b> —— 抵挡一次伤害</div></div>
+          <div class="pcard"><canvas id="gi-redpacket" width="44" height="44"></canvas><div class="pinfo"><b>红包</b> —— 计入红包总数，可在商店购买装备和皮肤</div></div>
+          <div class="pcard"><canvas id="gi-transform" width="44" height="44"></canvas><div class="pinfo"><b>变身</b> —— 10 秒：英雄变红、子弹变大、射速提升、BGM 加速</div></div>
+        </div>
+        <div class="guide-divider"></div>
+        <div class="guide-list">
+          <b>胜负判定</b><br>
+          &nbsp;&nbsp;🏆 <b>胜利</b>：坚持到关卡时间结束即过关；第 3 关需击破 BOSS<br>
+          &nbsp;&nbsp;💥 <b>失败</b>：生命（HP）归 0 → 游戏结束<br>
+          &nbsp;&nbsp;⚠️ 被敌弹 / 敌机 / 障碍命中损失 1 点生命，随后短暂无敌闪烁<br>
+          &nbsp;&nbsp;🎯 受伤判定区仅为机舱核心（游戏中发光的圆形机舱），机翼擦过不会受伤
+        </div>
+        <div class="guide-divider"></div>
+        <div class="guide-list">
+          <b>游戏模式</b><br>
+          &nbsp;&nbsp;🎯 <b>关卡模式</b>：3 个关卡，坚持到每关时间结束即过关，第 3 关击破 BOSS 通关胜利（HP 3 格）<br>
+          &nbsp;&nbsp;♾️ <b>无尽模式</b>：所有敌机无限循环出现（小兵居多、刷新更快）· Boss 每 20 秒刷新一次 · “MV里的外星人”障碍每 10 秒从屏幕边缘来袭（双外星人旋转 + 直线运动，越来越快）· 机长不阵亡则永无止境 · 以阵亡前分数为评分（HP 5 格）
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="start">开始游戏（跳过指引）</button>
+        <button class="btn" data-action="back-menu">← 返回主菜单</button>
+      </div>
+    </div>
+
+    <!-- 关卡介绍界面（本局装备确认 + 敌机图鉴 + 攻击方式 + 分值） -->
+    <div class="screen" id="scr-intro">
+      <h2 id="intro-title">第一关</h2>
+      <div class="gear-bar" id="intro-gear">🎒 本局生效：…</div>
+      <div class="gold-bar" id="intro-gold"></div>
+      <div class="panel intro-panel">
+        <div class="hint">—— 本关敌机图鉴 ——</div>
+        <div class="intro-row" id="intro-cards"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="begin" id="btn-begin">✔ 了解，开始本关</button>
+        <button class="btn" data-action="intro-exit">← 返回主菜单</button>
+      </div>
+    </div>
+
+    <!-- 模式选择界面 -->
+    <div class="screen" id="scr-mode">
+      <h2>选择模式</h2>
+      <div class="panel">
+        <div class="mode-card">
+          <div class="mc-name">🎯 关卡模式</div>
+          <div class="mc-desc">3 个关卡 · 坚持到每关时间结束即过关 · 第 3 关击破 BOSS 通关胜利 · HP 3 格</div>
+        </div>
+        <div class="mode-card">
+          <div class="mc-name">♾️ 无尽模式</div>
+          <div class="mc-desc">敌机无限循环 · Boss 每 20 秒刷新 · MV里的外星人障碍每 10 秒来袭（越来越快）· 机长不阵亡则永无止境 · HP 5 格</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="mode-level">关卡模式</button>
+        <button class="btn" data-action="mode-endless">无尽模式</button>
+        <button class="btn" data-action="back-menu">← 返回主菜单</button>
+      </div>
+      <div class="hint">按 ENTER 默认进入关卡模式</div>
+    </div>
+
+    <!-- 暂停界面 -->
+    <div class="screen" id="scr-pause">
+      <h2>已暂停</h2>
+      <div class="hint" id="pause-rp">🎒 本局红包：0</div>
+      <div class="hint">按 P 或点击下方按钮继续</div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="resume">▶ 继续</button>
+        <button class="btn" data-action="restart">重新开始</button>
+        <button class="btn danger" data-action="menu">回主菜单</button>
+      </div>
+    </div>
+
+    <!-- 过关结算界面 -->
+    <div class="screen" id="scr-clear">
+      <h2 id="clear-title">第 1 关 通关！</h2>
+      <div class="rating" id="clear-rating">S</div>
+      <div class="panel">
+        <div class="row"><span>本关得分</span><b id="clear-level-score">0</b></div>
+        <div class="row"><span>累计得分</span><b id="clear-total-score">0</b></div>
+        <div class="row"><span>本关红包</span><b id="clear-rp">0</b></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="next" id="btn-next">下一关 ▶</button>
+        <button class="btn" data-action="restart">重新开始</button>
+      </div>
+    </div>
+
+    <!-- 游戏结束界面 -->
+    <div class="screen" id="scr-over">
+      <h2 style="color:#ff8fa3; text-shadow:0 0 18px #ff3b5c;" id="over-title">游戏结束</h2>
+      <div class="panel">
+        <div class="row"><span id="over-score-label">最终得分</span><b id="over-score">0</b></div>
+        <div class="row"><span>本局红包</span><b id="over-rp">0</b></div>
+        <div class="row"><span id="over-best-label">历史最高</span><b id="over-best">0</b></div>
+        <div class="row" id="over-basin-row" style="display:none"><span>聚宝盆</span><b>已失效</b></div>
+        <div class="row" id="over-rank-row" style="display:none"><span>段位晋升</span><b id="over-rank">-</b></div>
+        <div class="row" id="over-daily-row" style="display:none"><span>今日 / 昨日</span><b id="over-daily">-</b></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="restart">重新开始</button>
+        <button class="btn danger" data-action="menu">回主菜单</button>
+      </div>
+    </div>
+
+    <!-- 最终胜利界面 -->
+    <div class="screen" id="scr-victory">
+      <h2 style="text-shadow:0 0 22px #ffe66d;">🎉 全部通关！</h2>
+      <div class="rating" id="vic-rating">S</div>
+      <div class="panel">
+        <div class="row"><span>总得分</span><b id="vic-score">0</b></div>
+        <div class="row"><span>本局红包</span><b id="vic-rp">0</b></div>
+        <div class="row"><span>红包累计</span><b id="vic-total-rp">0</b></div>
+        <div class="row"><span>历史最高</span><b id="vic-best">0</b></div>
+        <div class="row" id="vic-rank-row" style="display:none"><span>段位晋升</span><b id="vic-rank">-</b></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" data-action="restart">重新开始</button>
+        <button class="btn danger" data-action="menu">回主菜单</button>
+      </div>
+    </div>
+
+    <!-- 段位图鉴（当前段位 + 进度条 + 晋级条件解释） -->
+    <div class="screen" id="scr-rank">
+      <h2>段位图鉴</h2>
+      <div class="rank-current">
+        <div class="rc-name">🏅 当前段位：<b id="rank-cur-name">见习机长</b></div>
+        <div class="rc-label">无尽最高分进度（晋级需 <b id="rank-next-name">少尉</b>）</div>
+        <div class="rc-bar"><div class="rc-fill" id="rank-score-fill"></div></div>
+        <div class="hint" id="rank-score-text"></div>
+        <div class="rc-label" id="rank-task-label">晋级任务</div>
+        <div class="rc-bar"><div class="rc-fill task" id="rank-task-fill"></div></div>
+        <div class="hint" id="rank-task-text"></div>
+      </div>
+      <div class="rank-list" id="rank-list"></div>
+      <div class="btn-row">
+        <button class="btn" data-action="rank-exit">返回主菜单</button>
+      </div>
+    </div>
+
+    <!-- 商店（装备/皮肤分类，条目由 JS 动态生成） -->
+    <div class="screen" id="scr-shop">
+      <h2>商店</h2>
+      <div class="panel">
+        <div class="row"><span>🧧 红包余额</span><b id="shop-rp">0</b></div>
+      </div>
+      <div class="shop-items" id="shop-items"></div>
+      <div class="hint" id="shop-msg"></div>
+      <div class="btn-row">
+        <button class="btn" data-action="shop-close">关闭商店</button>
+      </div>
+    </div>
+
+    <!-- 背包（查看与使用已购法具/皮肤，条目由 JS 动态生成） -->
+    <div class="screen" id="scr-backpack">
+      <h2>背包</h2>
+      <div class="shop-items" id="backpack-items"></div>
+      <div class="hint" id="bp-msg"></div>
+      <div class="btn-row">
+        <button class="btn" data-action="backpack-exit">退出背包</button>
+      </div>
+    </div>
+
+    <!-- 开发者水印（右上角，半透明小字） -->
+    <div id="watermark">开发者水印：摇号YANG</div>
+
+    <!-- 声音开关（喇叭 + ON/OFF 切换键，非战斗界面显示） -->
+    <button id="btn-sound" title="声音开关">
+      <svg viewBox="0 0 24 24">
+        <path class="spk-body" d="M3 9v6h4l5 5V4L7 9H3z"/>
+        <path class="wave" d="M15.5 9.5a4 4 0 0 1 0 5"/>
+        <path class="wave" d="M18.2 7.2a8 8 0 0 1 0 9.6"/>
+        <path class="mute-x" d="M15.8 10.4l5 5.2M20.8 10.4l-5 5.2"/>
+      </svg>
+      <span class="snd-label" id="snd-label">ON</span>
+      <span class="snd-switch"><span class="snd-knob"></span></span>
+    </button>
+
+    <div id="scanlines"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ==================================================================
+   《中国人能飞》— 飞机大战网页游戏（单文件 · 无外部依赖）
+   结构：CONFIG 配置 → 工具 → 音频 → 输入 → 实体/生成 → 更新 →
+         绘制 → UI → 主循环 → 启动
+   ================================================================== */
+
+/* ==================== 1. 全局配置 CONFIG（所有可调参数集中于此） ==================== */
+const CONFIG = {
+  W: 960, H: 540,                       // 逻辑分辨率（16:9）
+  player: {
+    speed: 400,                         // 移动速度 px/s
+    slowFactor: 0.45,                   // SHIFT 低速倍率
+    radius: 14,                         // 机体参考半径
+    hitRadius: 10,                      // 受伤判定半径：仅中心圆形机舱（不含机翼）
+    hitOffsetY: -2,                     // 受伤判定中心相对机体中心的纵向偏移（机舱位置）
+    fireInterval: 0.16,                 // 普通射击间隔 s
+    transformFireInterval: 0.07,        // 变身射击间隔 s
+    lives: 3,                           // 生命数
+    invincibleTime: 2.0,                // 受击无敌时长 s
+  },
+  bullet: {
+    playerSpeed: 760,                   // 玩家子弹速度
+    damage: 12,                         // 玩家子弹伤害
+    transformDamage: 16,                // 变身子弹伤害
+    enemyStraightSpeed: 240,            // 敌机直线子弹速度
+    enemyFanSpeed: 200,                 // 精英扇形弹幕速度
+    bossRingSpeed: 150,                 // Boss 环形弹幕速度
+    bossAimSpeed: 230,                  // Boss 瞄准弹速度
+    homingSpeed: 170,                   // 追踪弹速度
+  },
+  colors: {
+    bg: '#05060f',
+    neonBlue: '#00e5ff',
+    neonPurple: '#b388ff',
+    cyan: '#7cfffb',
+    red: '#ff3b5c',
+    redLight: '#ff8fa3',
+    orange: '#ff9f43',
+    yellow: '#ffe66d',
+    white: '#eaf6ff',
+    green: '#3dffa2',
+  },
+  audio: {
+    desktopDir: 'file:///C:/Users/yanghao/Desktop/',   // 桌面音频目录
+    bgmVolume: 0.35,                   // 背景音乐音量（低于音效）
+    sfxVolume: 0.6,                    // 音效音量
+    bgmKeys: ['menu', 'bgm1', 'bgm2', 'bgm3'],
+    paths: {                           // 音频文件清单：文件名（先找游戏目录，再找桌面）
+      menu:      ['中国人能飞 (梦核)-DJ Arliu（开始界面背景音乐）.mp3'],
+      bgm1:      ['中国人会飞-Chalky Wong_揽佬SKAI ISYOURGOD（第一关）.mp3'],
+      bgm2:      ['Gut Genug（中国人能飞）-留白（第二关）.mp3'],
+      bgm3:      ['中国人能飞+gut genug-茸茸（第三关）.mp3'],
+      shoot:     ['shoot.mp3'],
+      shoot2:    ['揽佬音效.m4a'],
+      explosion: ['explosion.mp3'],
+      bossAlarm: ['boss mention.mp3'],
+      victory:   ['胜利音效.m4a'],
+      defeat:    ['失败音效.m4a'],
+      redPacket: ['来财音效.m4a'],
+      transform: ['大展宏图音效.m4a'],
+      highFly:   ['高空飞行音效.m4a'],
+      timeStop:  ['时空暂停音效.m4a'],
+      click:     ['click.mp3'],
+    },
+  },
+  levels: [  // 关卡参数：航道数 / 时长 / 生成间隔 / 敌速 / 类型权重 / 开火概率
+    { name:'第一关 · 基础编队', lanes:3, dur:40, spawnInterval:1.5, enemySpeed:[120,200],
+      types:{dart:1}, fireChance:0.5, bgm:'bgm1' },
+    { name:'第二关 · 弹幕升级', lanes:4, dur:55, spawnInterval:0.95, enemySpeed:[180,260],
+      types:{dart:0.5, elite:0.25, speeder:0.25}, fireChance:0.8, bgm:'bgm2' },
+    { name:'第三关 · 激光核心', lanes:5, dur:42, spawnInterval:0.72, enemySpeed:[200,280],
+      types:{dart:0.3, switcher:0.35, elite:0.2, speeder:0.15}, fireChance:0.9,
+      lasers:[{t:8, x:250, y:170, dir:1}, {t:21, x:710, y:200, dir:-1}], laserDur:15,
+      bossAt:42, bgm:'bgm3' },
+  ],
+  enemies: {
+    dart:     { hp:1, score:100, r:16 },   // 基础三角机
+    elite:    { hp:24, score:300, r:22 },   // 精英六边形（扇形弹幕）
+    speeder:  { hp:1, score:150, r:12 },   // 边缘快速机
+    switcher: { hp:3, score:250, r:16 },   // 航道切换菱形机
+    goldplane: { hp: 40, score: 800, r: 20 },  // 每日彩蛋·金飞机（普通子弹 4 发击落）
+  },
+  boss: {
+    hp: 2600, score: 5000, r: 76,
+    enterY: 130,                    // Boss 入场停留高度
+    ringCd: 2.0, ringCd2: 1.25,     // 环形弹幕间隔（阶段1/2）
+    aimCd: 2.6, homingCd: 2.3,      // 瞄准弹 / 追踪弹间隔
+  },
+  endless: {                        // 无尽模式专属参数
+    lives: 5,                       // 无尽模式血槽 5 格
+    bossEvery: 20,                  // Boss 每 20 秒刷新一次
+    alienEvery: 10,                 // MV 外星人障碍每 10 秒刷新一次
+    alienBaseSpeed: 40,             // 外星人初始直线速度（很慢）
+    alienAccel: 16,                 // 直线速度加速度（越来越快，效果明显）
+    alienMaxSpeed: 420,             // 直线速度上限
+    alienBaseRot: 0.6,              // 初始旋转速度 rad/s
+    alienRotAccel: 0.3,             // 旋转加速度（越来越快，效果明显）
+    alienMaxRot: 6,                 // 旋转速度上限
+    alienRadius: 18,                // 单个外星人碰撞半径
+    alienOrbit: 26,                 // 两个外星人绕共同中心旋转半径
+    spawnInterval: 0.55,            // 小兵刷新间隔（较快，小兵概率高）
+    types: { dart: 0.5, switcher: 0.2, elite: 0.18, speeder: 0.12 },  // 敌机类型权重
+    transformChance: 0.05,          // 变身道具击落敌机后的原始掉落概率 5%（使用大变幡后 10%）
+    basinChance: 0.88,              // 聚宝盆生效时无尽模式红包掉落概率 88%
+    alienRects: [[95, 130, 450, 880], [615, 130, 450, 880]],  // 外星人.png 中两个外星人的抠取区域
+  },
+  highFly: { duration: 8, cycle: 10, chance: 0.5 },  // I can fly 高空飞行：持续 8 秒 / 每 10 秒判定 / 50% 概率
+  artifacts: {   // 商店物品（正式原价）
+    banner:  { name: '大变幡（永久）',    price: 50,  maxBuy: 1, desc: '无尽模式「变身」道具掉落概率永久 +5%（5% → 10%）' },
+    eight:   { name: '八方来财（永久）', price: 88,  maxBuy: 1, desc: '关卡模式全部通关结算时红包 +8（装备加成）' },
+    basin:   { name: '聚宝盆（一次性）', price: 30,  maxBuy: 0, desc: '下一次无尽模式红包掉落概率 88%，该次无尽结束失效 · 可重复购买' },
+    repair:  { name: '紧急维修（一次性）', price: 30, maxBuy: 0, desc: '下一次挑战我方被击毁时紧急恢复 1 点生命并无敌 3 秒（一局仅可生效一次）' },
+    firesupport: { name: '火力支援（永久）', price: 300, maxBuy: 1, desc: '按 M 召唤两个伴生僚机 10 秒（每秒锁定最近敌机发射追踪弹，伤害与主机相同），冷却 8 秒 · 上尉及以上可购' },
+    timefield: { name: '领域（永久）：错乱时空', price: 300, maxBuy: 1, desc: '每 12 秒 66% 概率进入时空静止 6 秒：敌机/障碍/敌弹冻结，我方正常行动攻击 · 王牌机长及以上可购' },
+    gold:    { name: '黄金之翼',          price: 200, maxBuy: 1, desc: '机翼变成金色并带发光晕染效果（可随时换回原皮肤）' },
+    silver:  { name: '冷银之翼',          price: 200, maxBuy: 1, desc: '机翼变成冷银色并带冷光晕染效果（可随时换回原皮肤）' },
+    feather: { name: 'I can fly',         price: 350, maxBuy: 1, desc: '纯白羽翼 · 每 10 秒 50% 概率进入 8 秒高空飞行（无视敌机本体和障碍的碰撞，但碰到子弹仍会受伤）' },
+  },
+  powerups: {
+    dropChance: { bomb:0.05, shield:0.05, redpacket:0.06 },  // 常规道具掉率
+    transformChance: 0.02,          // 变身基础掉率（小概率）
+    transformMaxPerLevel: 1,        // 变身每关仅 1 次（前半程没掉过则保底，见 maybeDrop）
+    transformDuration: 10,          // 变身持续 10 秒
+    fallSpeed: 95,                  // 道具下落速度
+    pickupRadius: 34,               // 道具自动拾取半径（靠近即拾取）
+  },
+  effects: {
+    starCount: 70, gridSpeed: 55,   // 星星数量 / 透视网格滚动速度
+    glitchEvery: [4, 9],            // 故障抖动随机间隔（秒）
+    shakePower: 7,                  // 受击屏幕震动强度
+  },
+  storage: {
+    redPackets: 'ccf_redPackets',   // 红包累计数（持久化）
+    highScore: 'ccf_highScore',     // 关卡模式最高分（持久化）
+    highEndless: 'ccf_highEndless', // 无尽模式最高分（持久化）
+    artifactOwn: 'ccf_artifact_own',   // 大变幡购买状态
+    artifactUsed: 'ccf_artifact_used', // 大变幡使用状态
+    skinOwn: 'ccf_skin_own',           // 黄金之翼购买状态
+    skinEquipped: 'ccf_skin',          // 当前装备皮肤（classic / gold / silver / feather）
+    eightOwn: 'ccf_eight_own',         // 八方来财购买状态
+    eightUsed: 'ccf_eight_used',       // 八方来财使用状态
+    basinCount: 'ccf_basin_count',     // 聚宝盆持有数（可重复购买）
+    basinActive: 'ccf_basin_active',   // 聚宝盆生效中（下一次无尽模式）
+    repairCount: 'ccf_repair_count',   // 紧急维修持有数（可重复购买）
+    repairActive: 'ccf_repair_active', // 紧急维修生效中（下一次挑战）
+    silverOwn: 'ccf_skin_silver_own',  // 冷银之翼购买状态
+    featherOwn: 'ccf_skin_feather_own',// I can fly 购买状态
+    seenGuide: 'ccf_seenGuide',     // 是否看过指引
+    soundOn: 'ccf_soundOn',         // 声音开关状态
+    logGames: 'ccf_log_games',         // 累计飞行局数
+    logKills: 'ccf_log_kills',         // 累计击毁敌机数
+    logSeconds: 'ccf_log_seconds',     // 累计飞行时长（秒）
+    dailyDay: 'ccf_daily_endless_day',   // 无尽"当日最高分"日期
+    dailyBest: 'ccf_daily_endless_best', // 无尽今日最高分
+    dailyPrev: 'ccf_daily_endless_prev', // 无尽昨日最高分（跨天归档）
+    goldDay: 'ccf_gold_day',           // 金飞机彩蛋日期（YYYYMMDD）
+    goldFirst: 'ccf_gold_first',       // 当天是否已首拾金飞机（0/1）
+    goldShown: 'ccf_gold_shown',       // 当天金飞机是否已出现过（严格每日仅一次）
+    clearedL2: 'ccf_cleared_l2',       // 历史已通关关卡模式第 2 关（0/1）
+    clearedL3: 'ccf_cleared_l3',       // 历史已通关关卡模式第 3 关（0/1）
+    bossKills: 'ccf_boss_kills',       // 历史击杀 Boss 次数（关卡+无尽均计入）
+    perfectClears: 'ccf_perfect_clears',// 历史关卡模式三关无伤通关次数
+    fireSupportOwn: 'ccf_firesupport_own',   // 火力支援购买状态
+    fireSupportUsed: 'ccf_firesupport_used', // 火力支援使用状态
+    timeFieldOwn: 'ccf_timefield_own',       // 错乱时空购买状态
+    timeFieldUsed: 'ccf_timefield_used',     // 错乱时空使用状态
+  },
+  ranks: [   // 段位阶梯：分数（无尽最高分）+ 额外任务双重条件（task 为 null 表示无额外要求）
+    { name: '见习机长', min: 0,      task: null },
+    { name: '少尉',     min: 5000,   task: '通关关卡模式第 2 关',        key: 'clearedL2',     need: 1 },
+    { name: '中尉',     min: 20000,  task: '通关关卡模式第 3 关',        key: 'clearedL3',     need: 1 },
+    { name: '上尉',     min: 50000,  task: '关卡模式历史最高分 ≥ 30000', key: 'highScore',     need: 30000 },
+    { name: '王牌机长', min: 100000, task: '历史击杀 Boss 100 次',      key: 'bossKills',     need: 100 },
+    { name: '传奇机长', min: 200000, task: '关卡模式三关无伤通关 100 次', key: 'perfectClears', need: 100 },
+  ],
+  gold: {    // 每日彩蛋·金飞机参数
+    speed: [90, 140],     // 下坠速度范围（慢速巡游）
+    laneCount: 5,         // 出生航道数
+    offsetRange: [2, 8],  // 开局延迟秒数范围（当天固定）
+    firstBonus: 5,        // 当天首次击落红包
+    repeatBonus: 2,       // 当天后续击落红包
+  },
+  fireSupport: {          // 技能：火力支援（永久）
+    duration: 10,         // 召唤生效时间（秒）
+    cooldown: 8,          // 召唤结束后冷却（秒）
+    wingmanSpeed: 560,    // 僚机追踪弹速度（大幅提升确保命中）
+    wingmanTurn: 4.5,     // 追踪弹转向速率 rad/s（更高，咬住快速目标）
+    wingmanOffset: 46,    // 僚机距主机水平间距
+    wingmanDrop: 22,      // 僚机相对主机偏下距离
+    fadeDur: 0.45,        // 渐显/渐隐时长（秒）
+  },
+  timeField: {            // 领域：错乱时空（永久）
+    interval: 12,         // 触发判定周期（秒）
+    chance: 0.66,         // 触发概率 66%
+    duration: 6,          // 时空静止持续时间（秒）
+  },
+};
+
+/* ==================== 2. DOM 引用 ==================== */
+const $ = id => document.getElementById(id);
+const cv = $('cv');
+let ctx = cv.getContext('2d');   // let：指引/关卡介绍界面会临时切换绘制目标画布
+const wrap = $('wrap');
+
+/* ==================== 3. 工具函数 ==================== */
+const PI2 = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const rand  = (a, b) => a + Math.random() * (b - a);
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+/* 点到线段的距离（用于旋转激光碰撞检测） */
+function distSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return dist(px, py, ax, ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = clamp(t, 0, 1);
+  return dist(px, py, ax + t * dx, ay + t * dy);
+}
+/* 航道 X 坐标：N 条固定航道对应上方 N 个刷新点 */
+const laneX = (lanes, i) => CONFIG.W * (i + 1) / (lanes + 1);
+/* 读/写持久化数据 */
+const storeGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+const storeSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+/* ---------- 留存功能工具（段位 / 日志 / 每日彩蛋） ---------- */
+/* 本地时区日期 YYYYMMDD（勿用 toISOString，那是 UTC 会跨天错位） */
+function getDateStr() {
+  const d = new Date();
+  return '' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+/* 字符串 → uint32 哈希（日期种子转数字种子用） */
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+/* 确定性伪随机数生成器：同种子 → 同序列（每日彩蛋同日一致） */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+/* 秒 → "X时X分 / X分X秒 / X秒" 友好显示 */
+function formatDuration(sec) {
+  sec = Math.floor(sec);
+  if (sec >= 3600) return Math.floor(sec / 3600) + '时' + Math.floor(sec % 3600 / 60) + '分';
+  if (sec >= 60) return Math.floor(sec / 60) + '分' + (sec % 60) + '秒';
+  return sec + '秒';
+}
+/* 段位任务是否达标（key 为空表示无额外任务） */
+function rankTaskDone(i) {
+  const r = CONFIG.ranks[i];
+  if (!r.key) return true;
+  if (r.key === 'clearedL2') return !!S.clearedL2;
+  if (r.key === 'clearedL3') return !!S.clearedL3;
+  return (S[r.key] || 0) >= r.need;
+}
+/* 段位任务当前进度（供进度条显示） */
+function rankTaskProgress(i) {
+  const r = CONFIG.ranks[i];
+  if (!r.key) return 1;
+  if (r.key === 'clearedL2') return S.clearedL2 ? 1 : 0;
+  if (r.key === 'clearedL3') return S.clearedL3 ? 1 : 0;
+  return Math.min(1, (S[r.key] || 0) / r.need);
+}
+/* 某档段位是否达标（无尽最高分 + 任务条件双重判定） */
+function rankEligible(i) {
+  const r = CONFIG.ranks[i];
+  if (S.highEndless < r.min) return false;
+  return rankTaskDone(i);
+}
+/* 当前段位下标（阶梯式：满足条件的最高档） */
+function currentRankIndex() {
+  let idx = 0;
+  for (let i = 0; i < CONFIG.ranks.length; i++) if (rankEligible(i)) idx = i;
+  return idx;
+}
+/* 段位总览信息：当前档 / 下一档 / 分数进度 / 任务进度 */
+function rankInfo() {
+  const cur = currentRankIndex();
+  const next = cur + 1 < CONFIG.ranks.length ? CONFIG.ranks[cur + 1] : null;
+  const scoreProgress = next ? Math.min(1, (S.highEndless - CONFIG.ranks[cur].min) / (next.min - CONFIG.ranks[cur].min)) : 1;
+  const taskProgress = next ? rankTaskProgress(cur + 1) : 1;
+  return { cur, next, scoreProgress, taskProgress };
+}
+/* 跨天惰性归档：日期变化时 今日→昨日、今日清零（主菜单与无尽结算调用） */
+function checkDayRollover() {
+  const today = getDateStr();
+  if (S.dailyDay !== today) {
+    S.dailyPrev = S.dailyBest;
+    S.dailyBest = 0;
+    S.dailyDay = today;
+    storeSet(CONFIG.storage.dailyDay, S.dailyDay);
+    storeSet(CONFIG.storage.dailyBest, S.dailyBest);
+    storeSet(CONFIG.storage.dailyPrev, S.dailyPrev);
+  }
+}
+/* 飞行日志落盘（低频率调用，避免逐帧写 localStorage） */
+function commitLogStats() {
+  storeSet(CONFIG.storage.logGames, S.totalGames);
+  storeSet(CONFIG.storage.logKills, S.totalKills);
+  storeSet(CONFIG.storage.logSeconds, S.totalSeconds);
+}
+/* 最近敌机（含 Boss）：僚机追踪弹的目标选择 */
+function nearestEnemy(x, y) {
+  let best = null, bd = 1e9;
+  for (const e of S.enemies) { const d = dist(x, y, e.x, e.y); if (d < bd) { bd = d; best = e; } }
+  if (S.boss && !S.boss.dying) { const d = dist(x, y, S.boss.x, S.boss.y); if (d < bd) { bd = d; best = S.boss; } }
+  return best;
+}
+/* 追踪弹锁定目标是否仍存活（未被击毁、未出屏、Boss 未阵亡） */
+function isTargetAlive(t) {
+  if (!t) return false;
+  if (S.boss === t) return !S.boss.dying;
+  return S.enemies.indexOf(t) >= 0;
+}
+/* 金飞机彩蛋跨天惰性重置（日期变化时：首拾/已出现标记清零） */
+function checkGoldDay() {
+  if (S.goldDay !== getDateStr()) {
+    S.goldDay = getDateStr(); S.goldFirst = 0; S.goldShown = 0;
+    storeSet(CONFIG.storage.goldDay, S.goldDay);
+    storeSet(CONFIG.storage.goldFirst, 0);
+    storeSet(CONFIG.storage.goldShown, 0);
+  }
+}
+/* 每日彩蛋：当天金飞机的开局延迟（秒）与出生航道（同一天所有对局一致，每天不同） */
+function getGoldParams() {
+  const rng = mulberry32(hashStr(getDateStr()));
+  const offset = CONFIG.gold.offsetRange[0] + rng() * (CONFIG.gold.offsetRange[1] - CONFIG.gold.offsetRange[0]);
+  const lane = Math.floor(rng() * CONFIG.gold.laneCount);
+  return { offset, lane };
+}
+/* 生成金飞机（顶部固定航道；当天严格仅出现一次） */
+function spawnGoldPlane() {
+  checkGoldDay();
+  S.goldSpawned = true;
+  S.goldShown = 1;
+  storeSet(CONFIG.storage.goldShown, 1);
+  const e = createEnemy('goldplane', laneX(CONFIG.gold.laneCount, S.goldLane), -30);
+  e.x0 = e.x;
+  S.enemies.push(e);
+}
+
+/* ==================== 4. 游戏全局状态 ==================== */
+const S = {
+  state: 'menu',              // menu | guide | shop | playing | paused | winAnim | loseAnim | clearScreen | gameover | victory
+  time: 0, levelTime: 0,
+  score: 0, lives: 3, level: 1, deaths: 0,
+  bombs: 0, shields: 0,
+  redPacketsRun: 0, levelRP: 0,          // 本局红包 / 本关红包
+  totalRP: storeGet(CONFIG.storage.redPackets, 0),   // 红包累计（跨局持久化）
+  highScore: storeGet(CONFIG.storage.highScore, 0),
+  seenGuide: storeGet(CONFIG.storage.seenGuide, false),
+  soundOn: storeGet(CONFIG.storage.soundOn, true),   // 声音开关（跨局持久化）
+  mode: 'level',                    // 当前模式：level（关卡）| endless（无尽）
+  maxLives: 3,                      // 当前模式血槽格数（关卡 3 格 / 无尽 5 格）
+  levelCfg: null,                   // 当前关卡配置（无尽模式为伪配置）
+  highEndless: storeGet(CONFIG.storage.highEndless, 0),   // 无尽最高分
+  endlessT: 0, bossTimer: 0, alienTimer: 0, bossCount: 0, // 无尽模式计时
+  laserIdx: 0,                     // 本局已生成的旋转激光序号（防止污染 CONFIG 导致后续对局不再刷新）
+  aliens: [],                       // MV 外星人障碍列表
+  alienSpr: [null, null],           // 外星人.png 抠出的两个精灵
+  newEndlessRecord: false,
+  artifactOwn: storeGet(CONFIG.storage.artifactOwn, 0),    // 大变幡已购 0/1
+  artifactUsed: storeGet(CONFIG.storage.artifactUsed, 0),  // 大变幡已使用 0/1
+  skinOwn: storeGet(CONFIG.storage.skinOwn, 0),            // 黄金之翼已购 0/1
+  skin: storeGet(CONFIG.storage.skinEquipped, 'classic'),  // 当前皮肤：classic / gold / silver / feather
+  eightOwn: storeGet(CONFIG.storage.eightOwn, 0),          // 八方来财已购 0/1
+  eightUsed: storeGet(CONFIG.storage.eightUsed, 0),        // 八方来财已使用 0/1
+  basinCount: storeGet(CONFIG.storage.basinCount, 0),      // 聚宝盆持有数
+  basinActive: storeGet(CONFIG.storage.basinActive, 0),    // 聚宝盆生效中
+  repairCount: storeGet(CONFIG.storage.repairCount, 0),    // 紧急维修持有数
+  repairActive: storeGet(CONFIG.storage.repairActive, 0),  // 紧急维修生效中（下一次挑战）
+  silverOwn: storeGet(CONFIG.storage.silverOwn, 0),        // 冷银之翼已购 0/1
+  featherOwn: storeGet(CONFIG.storage.featherOwn, 0),      // I can fly 已购 0/1
+  highFlyT: 0, highFlyTimer: 10,      // I can fly 高空飞行：剩余时间 / 下次判定倒计时
+  // 留存功能：飞行日志 / 昨日对比 / 每日彩蛋
+  totalGames: storeGet(CONFIG.storage.logGames, 0),      // 累计飞行局数
+  totalKills: storeGet(CONFIG.storage.logKills, 0),      // 累计击毁敌机数
+  totalSeconds: storeGet(CONFIG.storage.logSeconds, 0),  // 累计飞行时长（秒）
+  dailyDay: storeGet(CONFIG.storage.dailyDay, ''),       // 无尽当日最高分日期
+  dailyBest: storeGet(CONFIG.storage.dailyBest, 0),      // 无尽今日最高分
+  dailyPrev: storeGet(CONFIG.storage.dailyPrev, 0),      // 无尽昨日最高分
+  goldDay: storeGet(CONFIG.storage.goldDay, ''),         // 金飞机彩蛋日期
+  goldFirst: storeGet(CONFIG.storage.goldFirst, 0),      // 当天是否已首拾金飞机
+  goldShown: storeGet(CONFIG.storage.goldShown, 0),      // 当天金飞机是否已出现过
+  goldSpawned: false, goldAt: 0, goldLane: 0,            // 金飞机本局生成状态
+  clearedL2: storeGet(CONFIG.storage.clearedL2, 0),      // 历史已通关第 2 关
+  clearedL3: storeGet(CONFIG.storage.clearedL3, 0),      // 历史已通关第 3 关
+  bossKills: storeGet(CONFIG.storage.bossKills, 0),      // 历史击杀 Boss 次数
+  perfectClears: storeGet(CONFIG.storage.perfectClears, 0),  // 历史三关无伤通关次数
+  rankStart: 0,                                          // 本局开始时的段位下标（结算晋升判定用）
+  fireSupportOwn: storeGet(CONFIG.storage.fireSupportOwn, 0),   // 火力支援已购 0/1
+  fireSupportUsed: storeGet(CONFIG.storage.fireSupportUsed, 0), // 火力支援已使用 0/1
+  wingmen: [], fireSupportT: 0, fireSupportCd: 0, wingmanFireCd: 0,  // 僚机状态
+  targetMarks: [],                 // 追踪弹实时锁定的目标标记（每帧刷新）
+  timeFieldOwn: storeGet(CONFIG.storage.timeFieldOwn, 0),   // 错乱时空已购 0/1
+  timeFieldUsed: storeGet(CONFIG.storage.timeFieldUsed, 0), // 错乱时空已使用 0/1
+  timeStopT: 0, timeStopTimer: 0,  // 时空静止剩余时间 / 下轮判定倒计时
+  player: { x: CONFIG.W / 2, y: CONFIG.H - 80, fireCd: 0, r: CONFIG.player.radius },
+  enemies: [], pBullets: [], eBullets: [], powerups: [], particles: [], lasers: [], popups: [],
+  boss: null, bossSpawned: false,
+  transformT: 0, transformDropped: 0,
+  invincibleT: 0, firing: false,
+  spawnTimer: 1, warnT: 0, banner: null,
+  flash: 0, shake: null, glitch: null, glitchNext: rand(CONFIG.effects.glitchEvery[0], CONFIG.effects.glitchEvery[1]),
+  animT: 0, playerDead: false,
+  dragId: null, dragTarget: null,
+  stars: [], gridOffset: 0,
+  avatar: null, avatarFailed: false,   // 揽佬头像（加载成功则作为英雄头像抠图显示）
+  levelScoreStart: 0,                   // 本关开始时的累计分（用于结算本关得分）
+};
+
+/* ==================== 5. 音频系统 ==================== */
+/* 说明：优先加载真实音频文件（游戏目录 → 桌面目录）。
+   文件缺失时自动使用 Web Audio API 合成音效占位，并在控制台输出提示。 */
+const AudioSys = {
+  ctx: null, master: null, sfxBus: null, bgmBus: null,
+  noiseBuf: null,
+  loaded: {},              // key -> AudioElement[]
+  missing: new Set(),      // 缺失的 key
+  currentBgm: null,        // 正在播放的 BGM（元素或合成器）
+  currentBgmKey: null,
+  pendingBgmKey: null,     // 文件还在加载时暂存要播的 BGM
+  bgmLoop: true,           // 当前 BGM 是否循环（高空飞行 BGM 一次性播放）
+  unlocked: false,
+  muted: false,            // 全局静音标记
+
+  /* 首次用户手势时初始化（浏览器自动播放策略要求） */
+  unlock() {
+    if (this.unlocked) return;
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});   // 确保音频上下文运行
+      this.master = this.ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.9;
+      this.master.connect(this.ctx.destination);
+      this.sfxBus = this.ctx.createGain(); this.sfxBus.gain.value = CONFIG.audio.sfxVolume;
+      this.sfxBus.connect(this.master);
+      this.bgmBus = this.ctx.createGain(); this.bgmBus.gain.value = CONFIG.audio.bgmVolume;
+      this.bgmBus.connect(this.master);
+      // 预生成 1 秒白噪声缓冲（爆炸等合成音效使用）
+      const len = this.ctx.sampleRate;
+      this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = this.noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this.unlocked = true;
+    } catch (e) { return; }
+    // 解锁后：菜单界面确保 BGM 在播放（自动播放被拦截时此刻重新尝试）
+    this.ensureMenuBGM();
+  },
+  /* 确保菜单 BGM 在播放：若 BGM 元素处于暂停（曾被自动播放策略拦截）则重新起播 */
+  ensureMenuBGM() {
+    if (!this.unlocked) return;
+    if (!['menu', 'guide', 'shop'].includes(S.state)) return;
+    const el = this.loaded['menu'] && this.loaded['menu'][0];
+    const playing = this.currentBgm && !(el && el.paused);
+    if (this.currentBgmKey !== 'menu' || !playing) this.playBGM('menu');
+  },
+
+  /* 候选路径：优先游戏同目录，其次桌面目录 */
+  candidates(name) {
+    const base = location.href.slice(0, location.href.lastIndexOf('/') + 1);
+    return [base + encodeURI(name), CONFIG.audio.desktopDir + encodeURI(name)];
+  },
+
+  /* 尝试加载单个音频文件（两个候选目录依次尝试，失败则标记缺失） */
+  tryLoad(key, name) {
+    return new Promise(resolve => {
+      const urls = this.candidates(name);
+      let i = 0;
+      const next = () => {
+        if (i >= urls.length) {
+          this.missing.add(key);
+          console.warn('[音频] 未找到文件:', name, '→ 使用 Web Audio 合成音效占位');
+          resolve(null);
+          return;
+        }
+        const a = new Audio(urls[i]);
+        let done = false;
+        const ok = () => {
+          if (done) return; done = true;
+          a.muted = this.muted;   // 遵循当前静音状态
+          (this.loaded[key] = this.loaded[key] || []).push(a);
+          resolve(a);
+        };
+        const fail = () => { if (!done) { done = true; i++; next(); } };
+        a.addEventListener('canplaythrough', ok, { once: true });
+        a.addEventListener('error', fail, { once: true });
+        setTimeout(fail, 4000);   // 超时兜底
+      };
+      next();
+    });
+  },
+
+  /* 加载全部音频清单 */
+  async loadAll() {
+    const jobs = [];
+    for (const key in CONFIG.audio.paths)
+      for (const name of CONFIG.audio.paths[key])
+        jobs.push(this.tryLoad(key, name).then(el => {
+          // BGM 文件加载完成时，若有等待播放的请求则立即接上
+          if (el && key === this.pendingBgmKey && !this.currentBgm) this.startLoadedBgm(key, this.bgmLoop);
+        }));
+    await Promise.all(jobs);
+    if (this.missing.size) console.warn('[音频] 缺失文件清单（已用合成音效替代）:', [...this.missing].join(', '));
+    // 加载完成后：在菜单界面立即尝试自动播放 BGM
+    if (!this.unlocked && ['menu', 'guide', 'shop'].includes(S.state)) {
+      this.ensureMenuBGM();
+      // 若被浏览器自动播放策略拦截（有声播放被拒）→ 降级为静音自动播放（音乐已流动），首次任意交互时自动恢复声音
+      if (S.soundOn) {
+        const el = this.loaded['menu'] && this.loaded['menu'][0];
+        if (el && el.paused) {
+          el.muted = true;
+          try { el.play().catch(() => {}); } catch (e) {}
+          const once = () => {
+            window.removeEventListener('pointerdown', once);
+            window.removeEventListener('keydown', once);
+            if (el.muted && S.soundOn) {
+              el.muted = false;
+              if (AudioSys.master) AudioSys.master.gain.value = 0.9;
+            }
+          };
+          window.addEventListener('pointerdown', once);
+          window.addEventListener('keydown', once);
+        }
+      }
+    }
+  },
+
+  /* 播放音效（自动选择空闲的音频元素，缺失则合成） */
+  play(key) {
+    if (!this.unlocked) return;
+    const arr = this.loaded[key];
+    if (arr && arr.length) {
+      const el = arr.find(e => e.paused || e.ended) || arr[0];
+      el.volume = CONFIG.audio.sfxVolume;
+      try { el.currentTime = 0; el.play().catch(() => {}); } catch (e) {}
+    } else {
+      synthSfx(key);   // 合成音效占位
+    }
+  },
+
+  /* BGM 控制（opts.loop=false 表示一次性播放，如高空飞行专属 BGM） */
+  playBGM(key, opts) {
+    this.stopBGM();
+    this.currentBgmKey = key;
+    this.bgmLoop = !opts || opts.loop !== false;
+    const arr = this.loaded[key];
+    if (arr && arr.length) this.startLoadedBgm(key, this.bgmLoop);
+    else if (this.missing.has(key)) { SynthBGM.play(key); this.currentBgm = 'synth'; }
+    else this.pendingBgmKey = key;   // 还在加载中
+  },
+  startLoadedBgm(key, loop) {
+    const arr = this.loaded[key];
+    if (!arr || !arr.length) return;
+    const el = arr[0];
+    el.volume = CONFIG.audio.bgmVolume;
+    el.muted = this.muted;   // 播放时遵循当前静音状态
+    el.loop = loop !== false;
+    el.playbackRate = 1;
+    try { el.currentTime = 0; el.play().catch(() => {}); } catch (e) {}
+    this.currentBgm = el;
+    this.pendingBgmKey = null;
+  },
+  stopBGM() {
+    if (this.currentBgm === 'synth') SynthBGM.stop();
+    else if (this.currentBgm) { try { this.currentBgm.pause(); } catch (e) {} }
+    this.currentBgm = null; this.currentBgmKey = null;
+  },
+  pauseBGM() {
+    if (this.currentBgm === 'synth') SynthBGM.stop();
+    else if (this.currentBgm) { try { this.currentBgm.pause(); } catch (e) {} }
+  },
+  resumeBGM() {
+    if (this.currentBgm === 'synth') SynthBGM.play(this.currentBgmKey);
+    else if (this.currentBgm) { try { this.currentBgm.play().catch(() => {}); } catch (e) {} }
+  },
+  /* 变身时 BGM 2 倍速 */
+  setBGMRate(r) {
+    if (this.currentBgm === 'synth') SynthBGM.setRate(r);
+    else if (this.currentBgm) { try { this.currentBgm.playbackRate = r; } catch (e) {} }
+  },
+};
+
+/* ---------- 合成音效（占位方案） ---------- */
+function sfxTone(type, f0, f1, dur, vol, when = 0) {
+  const c = AudioSys.ctx; if (!c) return;
+  const t = c.currentTime + when;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = type;
+  o.detune.value = (Math.random() - 0.5) * 25;   // 随机微失谐：防止快速连点同频叠加产生忽大忽小
+  o.frequency.setValueAtTime(Math.max(1, f0), t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.006);   // 快速起音，避免爆音
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(AudioSys.sfxBus);
+  o.start(t); o.stop(t + dur + 0.03);
+}
+function sfxNoise(dur, vol, freq, when = 0) {
+  const c = AudioSys.ctx; if (!c || !AudioSys.noiseBuf) return;
+  const t = c.currentTime + when;
+  const n = c.createBufferSource(); n.buffer = AudioSys.noiseBuf;
+  const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq || 1200;
+  const g = c.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  n.connect(f); f.connect(g); g.connect(AudioSys.sfxBus);
+  n.start(t); n.stop(t + dur + 0.03);
+}
+/* 僚机渐显音效（自主合成）：上行滑音 + 音量渐强（0.45s） */
+function sfxWingFadeIn() {
+  const c = AudioSys.ctx; if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(320, t);
+  o.frequency.exponentialRampToValueAtTime(760, t + 0.42);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.5, t + 0.32);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  o.connect(g); g.connect(AudioSys.sfxBus);
+  o.start(t); o.stop(t + 0.5);
+}
+/* 僚机渐隐音效（自主合成）：渐显音效的倒放（下行滑音 + 音量渐弱） */
+function sfxWingFadeOut() {
+  const c = AudioSys.ctx; if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(760, t);
+  o.frequency.exponentialRampToValueAtTime(320, t + 0.42);
+  g.gain.setValueAtTime(0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+  o.connect(g); g.connect(AudioSys.sfxBus);
+  o.start(t); o.stop(t + 0.45);
+}
+/* 僚机发射音效（自主合成）：短促高频双音，与主机发射音效不同 */
+function sfxWingShoot() {
+  const c = AudioSys.ctx; if (!c) return;
+  const t = c.currentTime;
+  for (const [f, w] of [[1400, 0], [1800, 0.06]]) {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(f, t + w);
+    o.frequency.exponentialRampToValueAtTime(f * 0.7, t + w + 0.05);
+    g.gain.setValueAtTime(0.0001, t + w);
+    g.gain.exponentialRampToValueAtTime(0.32, t + w + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + w + 0.06);
+    o.connect(g); g.connect(AudioSys.sfxBus);
+    o.start(t + w); o.stop(t + w + 0.07);
+  }
+}
+function synthSfx(key) {
+  switch (key) {
+    case 'shoot':     sfxTone('square', 950, 420, 0.07, 0.35); break;
+    case 'shoot2':    sfxTone('sawtooth', 220, 900, 0.09, 0.45); sfxNoise(0.06, 0.2, 2600); break;
+    case 'explosion': sfxNoise(0.5, 0.7, 900); sfxTone('sine', 150, 35, 0.4, 0.75); break;
+    case 'bossAlarm':
+      for (let i = 0; i < 4; i++) sfxTone('triangle', 620 + (i % 2) * 300, 620 + (i % 2) * 300, 0.22, 0.5, i * 0.24);
+      break;
+    case 'victory':
+      [523, 659, 784, 1047].forEach((f, i) => sfxTone('triangle', f, f, 0.26, 0.5, i * 0.13));
+      break;
+    case 'defeat':    sfxTone('sawtooth', 320, 55, 0.9, 0.5); break;
+    case 'redPacket': sfxTone('square', 1319, 1319, 0.07, 0.32); sfxTone('square', 1760, 1760, 0.1, 0.32, 0.09); break;
+    case 'transform': sfxTone('sawtooth', 180, 1400, 0.5, 0.4); sfxNoise(0.3, 0.18, 3000); break;
+    case 'click':     sfxTone('square', 1200, 900, 0.045, 0.25); break;
+  }
+}
+
+/* ---------- 合成 BGM（占位背景音乐，按关卡节奏循环） ---------- */
+const BGM_PATTERNS = {
+  menu: [[220,.4],[0,.08],[330,.4],[0,.08],[262,.4],[0,.08],[330,.4],[0,.08],[196,.4],[0,.08],[294,.4],[0,.08],[262,.4],[0,.08],[392,.4],[0,.08]],
+  bgm1: [[110,.14],[110,.14],[165,.14],[110,.14],[131,.14],[131,.14],[196,.14],[131,.14],[147,.14],[147,.14],[220,.14],[147,.14],[98,.14],[98,.14],[147,.14],[98,.14]],
+  bgm2: [[220,.1],[277,.1],[330,.1],[277,.1],[247,.1],[311,.1],[370,.1],[311,.1],[196,.1],[247,.1],[294,.1],[247,.1],[175,.1],[220,.1],[262,.1],[220,.1]],
+  bgm3: [[98,.16],[392,.06],[98,.16],[466,.06],[82,.16],[370,.06],[82,.16],[440,.06],[98,.16],[392,.06],[98,.16],[523,.06],[110,.16],[440,.06],[110,.16],[587,.06]],
+  highFly: [[523,.2],[0,.05],[659,.2],[0,.05],[784,.25],[0,.05],[1047,.35],[0,.1],[988,.2],[0,.05],[1175,.35],[0,.2]],
+  timeStop: [[392,.35],[0,.08],[523,.35],[0,.08],[392,.35],[0,.08],[659,.45],[0,.1],[523,.35],[0,.08],[392,.5],[0,.15],[262,.4],[0,.1],[392,.6],[0,.2]],
+};
+const SynthBGM = {
+  rate: 1, step: 0, nextT: 0, timer: null, pat: null,
+  play(key) {
+    this.stop();
+    this.pat = BGM_PATTERNS[key] || BGM_PATTERNS.menu;
+    this.step = 0; this.rate = 1;
+    this.nextT = AudioSys.ctx.currentTime + 0.1;
+    this.timer = setInterval(() => this.sched(), 80);
+  },
+  sched() {
+    const c = AudioSys.ctx; if (!c) return;
+    while (this.nextT < c.currentTime + 0.3) {
+      const [f, d] = this.pat[this.step % this.pat.length];
+      const stepDur = d / this.rate;
+      if (f > 0) {
+        const o = c.createOscillator(), g = c.createGain(), flt = c.createBiquadFilter();
+        o.type = f < 160 ? 'sawtooth' : 'square';
+        o.frequency.value = f;
+        flt.type = 'lowpass'; flt.frequency.value = f < 160 ? 320 : 2200;
+        g.gain.setValueAtTime(0.0001, this.nextT);
+        g.gain.exponentialRampToValueAtTime(f < 160 ? 0.3 : 0.1, this.nextT + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, this.nextT + stepDur * 0.92);
+        o.connect(flt); flt.connect(g); g.connect(AudioSys.bgmBus);
+        o.start(this.nextT); o.stop(this.nextT + stepDur + 0.05);
+      }
+      this.nextT += stepDur; this.step++;
+    }
+  },
+  setRate(r) { this.rate = r; },
+  stop() { if (this.timer) { clearInterval(this.timer); this.timer = null; } },
+};
+
+/* ==================== 6. 输入系统 ==================== */
+const Keys = new Set();
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+  AudioSys.unlock();
+  Keys.add(k);
+  if (k === 'enter') onEnter();
+  if (k === 'p') togglePause();
+  if (k === 'b') useBomb();
+  if (k === 'm') tryCastFireSupport();   // 火力支援：召唤僚机
+  if (k === ' ' || k === 'j') S.firing = true;
+});
+window.addEventListener('keyup', e => {
+  const k = e.key.toLowerCase();
+  Keys.delete(k);
+  if (k === ' ' || k === 'j') S.firing = false;
+});
+
+/* 指针坐标 → 逻辑坐标 */
+function toLogical(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * CONFIG.W, y: (e.clientY - r.top) / r.height * CONFIG.H };
+}
+/* 触摸拖拽移动飞机（仅触屏/手写笔，鼠标不参与，避免误点拉扯） */
+cv.addEventListener('pointerdown', e => {
+  AudioSys.unlock();
+  if (S.state !== 'playing' || e.pointerType === 'mouse') return;
+  S.dragId = e.pointerId;
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}   // 指针捕获：拖出画布也能收到后续事件
+  const p = toLogical(e);
+  S.dragTarget = {
+    x: clamp(p.x, 26, CONFIG.W - 26),
+    y: clamp(p.y - 70, 40, CONFIG.H - 30),   // 手指上方偏移，避免遮挡飞机
+  };
+});
+cv.addEventListener('pointermove', e => {
+  if (S.dragId !== e.pointerId || !S.dragTarget) return;
+  const p = toLogical(e);
+  S.dragTarget = {
+    x: clamp(p.x, 26, CONFIG.W - 26),
+    y: clamp(p.y - 70, 40, CONFIG.H - 30),
+  };
+});
+const endDrag = e => { if (S.dragId === e.pointerId) S.dragId = null; };
+/* 释放事件同时监听画布与 window：拖出画布后释放也不会残留拖拽状态 */
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+/* 清除全部输入状态（窗口失焦 / 切后台时调用，防止按键、拖拽卡死） */
+function clearInput() {
+  Keys.clear();
+  S.firing = false;
+  S.dragId = null;
+  S.dragTarget = null;
+}
+window.addEventListener('blur', clearInput);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+/* 移动端按钮 */
+$('btn-fire').addEventListener('pointerdown', e => { e.preventDefault(); AudioSys.unlock(); S.firing = true; });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+  $('btn-fire').addEventListener(ev, () => { S.firing = false; }));
+$('btn-bomb').addEventListener('pointerdown', e => { e.preventDefault(); AudioSys.unlock(); useBomb(); });
+$('btn-pause').addEventListener('pointerdown', e => { e.preventDefault(); AudioSys.unlock(); togglePause(); });
+/* 技能图标点击：释放火力支援（桌面/手机通用） */
+$('btn-skill').addEventListener('pointerdown', e => { e.preventDefault(); AudioSys.unlock(); tryCastFireSupport(); });
+
+/* 声音开关按钮（喇叭 + ON/OFF 拨杆） */
+$('btn-sound').addEventListener('click', e => {
+  e.stopPropagation();
+  AudioSys.unlock();
+  toggleSound();
+  $('btn-sound').blur();
+});
+
+/* 通用按钮动作（自动带点击音效） */
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  AudioSys.unlock();
+  btn.blur();
+  const act = btn.dataset.action;
+  // 音效：常规按钮统一 click；购买/使用类按钮由各自分支播放专属音效（避免双音叠加造成音量忽大忽小）
+  const ownSound = ['buy-banner', 'buy-eight', 'buy-basin', 'buy-repair', 'buy-firesupport', 'buy-timefield', 'buy-gold', 'buy-silver', 'buy-feather', 'use-banner', 'use-eight', 'use-basin', 'use-repair', 'use-firesupport', 'use-timefield', 'use-classic', 'use-gold', 'use-silver', 'use-feather', 'unequip-banner', 'unequip-eight', 'unequip-basin', 'unequip-repair', 'unequip-firesupport', 'unequip-timefield'];
+  if (!ownSound.includes(act)) AudioSys.play('click');
+  switch (act) {
+    case 'start':       if (S.state === 'menu') startGame(); else if (S.state === 'guide') openModeSelect(); break;
+    case 'guide':       if (S.state === 'menu') openGuide(); break;
+    case 'begin':       if (S.state === 'intro') beginLevel(); break;
+    case 'back-menu':   if (S.state === 'guide' || S.state === 'modeSelect') toMenu(); break;
+    case 'mode-level':  if (S.state === 'modeSelect') startRun(); break;
+    case 'mode-endless': if (S.state === 'modeSelect') startEndless(); break;
+    case 'shop':        if (S.state === 'menu') openShop(); break;
+    case 'shop-close':  if (S.state === 'shop') closeShop(); break;
+    case 'buy-banner':  if (S.state === 'shop') buyItem('banner'); break;
+    case 'buy-eight':   if (S.state === 'shop') buyItem('eight'); break;
+    case 'buy-basin':   if (S.state === 'shop') buyItem('basin'); break;
+    case 'buy-repair':  if (S.state === 'shop') buyItem('repair'); break;
+    case 'buy-gold':    if (S.state === 'shop') buyItem('gold'); break;
+    case 'buy-silver':  if (S.state === 'shop') buyItem('silver'); break;
+    case 'buy-feather': if (S.state === 'shop') buyItem('feather'); break;
+    case 'backpack':    if (S.state === 'menu') openBackpack(); break;
+    case 'backpack-exit': if (S.state === 'backpack') closeBackpack(); break;
+    case 'rank':        if (S.state === 'menu') openRank(); break;
+    case 'rank-exit':   if (S.state === 'rank') closeRank(); break;
+    case 'use-banner':  if (S.state === 'backpack') useEquip('banner'); break;
+    case 'use-eight':   if (S.state === 'backpack') useEquip('eight'); break;
+    case 'use-basin':   if (S.state === 'backpack') useEquip('basin'); break;
+    case 'use-repair':  if (S.state === 'backpack') useEquip('repair'); break;
+    case 'buy-firesupport': if (S.state === 'shop') buyItem('firesupport'); break;
+    case 'use-firesupport': if (S.state === 'backpack') useEquip('firesupport'); break;
+    case 'unequip-banner': if (S.state === 'backpack') unequipItem('banner'); break;
+    case 'unequip-eight':  if (S.state === 'backpack') unequipItem('eight'); break;
+    case 'unequip-basin':  if (S.state === 'backpack') unequipItem('basin'); break;
+    case 'unequip-repair': if (S.state === 'backpack') unequipItem('repair'); break;
+    case 'unequip-firesupport': if (S.state === 'backpack') unequipItem('firesupport'); break;
+    case 'buy-timefield': if (S.state === 'shop') buyItem('timefield'); break;
+    case 'use-timefield': if (S.state === 'backpack') useEquip('timefield'); break;
+    case 'unequip-timefield': if (S.state === 'backpack') unequipItem('timefield'); break;
+    case 'intro-exit':  if (S.state === 'intro') toMenu(); break;
+    case 'use-classic': if (S.state === 'backpack') equipSkin('classic'); break;
+    case 'use-gold':    if (S.state === 'backpack') equipSkin('gold'); break;
+    case 'use-silver':  if (S.state === 'backpack') equipSkin('silver'); break;
+    case 'use-feather': if (S.state === 'backpack') equipSkin('feather'); break;
+    case 'resume':      if (S.state === 'paused') togglePause(); break;
+    case 'next':        if (S.state === 'clearScreen') nextLevel(); break;
+    case 'restart':     if (['paused', 'clearScreen', 'gameover', 'victory'].includes(S.state)) restartCurrent(); break;
+    case 'menu':        if (['paused', 'gameover', 'victory'].includes(S.state)) toMenu(); break;
+  }
+});
+
+/* ENTER 键：开始游戏 / 模式选择 / 下一关 / 重新开始 */
+function onEnter() {
+  if (S.state === 'menu') startGame();
+  else if (S.state === 'guide') openModeSelect();
+  else if (S.state === 'modeSelect') startRun();   // 默认进入关卡模式
+  else if (S.state === 'intro') beginLevel();
+  else if (S.state === 'clearScreen') nextLevel();
+  else if (S.state === 'gameover' || S.state === 'victory') restartCurrent();
+  else if (S.state === 'paused') togglePause();
+}
+
+/* ==================== 7. 实体创建与生成 ==================== */
+function createEnemy(type, x, y) {
+  const D = CONFIG.enemies[type], L = S.levelCfg;
+  if (type === 'goldplane') {   // 每日彩蛋·金飞机：慢速 + 正弦巡游
+    const e = { type, x, y, hp: D.hp, maxHp: D.hp, r: D.r, score: D.score, t: rand(0, 6), flash: 0, speed: rand(CONFIG.gold.speed[0], CONFIG.gold.speed[1]), wave: rand(0, PI2), x0: x };
+    return e;
+  }
+  const e = { type, x, y, hp: D.hp, maxHp: D.hp, r: D.r, score: D.score, t: rand(0, 6), flash: 0 };
+  if (type === 'dart') { e.speed = rand(L.enemySpeed[0], L.enemySpeed[1]); e.fireCd = rand(1, 2.5); e.sway = Math.random() < 0.4; }
+  if (type === 'elite') { e.speed = rand(L.enemySpeed[0], L.enemySpeed[1]) * 0.6; e.stopY = rand(110, 190); e.x0 = x; e.fireCd = 1.6; e.life = 12; e.rot = 0; }
+  if (type === 'switcher') { e.speed = rand(L.enemySpeed[0], L.enemySpeed[1]); e.switchCd = rand(1.5, 3); e.targetX = x; e.tween = 0; e.fireCd = rand(1.5, 3); }
+  return e;
+}
+/* 按类型权重随机选择敌机 */
+function pickType(types) {
+  const r = Math.random(); let acc = 0;
+  for (const k in types) { acc += types[k]; if (r < acc) return k; }
+  return 'dart';
+}
+/* 生成一波敌机（固定航道） */
+function spawnEnemy() {
+  const L = S.levelCfg;
+  if (S.level === 3 && S.bossSpawned) return;   // Boss 战中不再刷新
+  const type = pickType(L.types);
+  if (type === 'speeder') {
+    // 屏幕边缘刷新的小型快速敌机
+    const fromLeft = Math.random() < 0.5;
+    const e = createEnemy('speeder', fromLeft ? -24 : CONFIG.W + 24, rand(40, 320));
+    e.vx = (fromLeft ? 1 : -1) * rand(340, 430);
+    e.vy = rand(-40, 40);
+    S.enemies.push(e);
+  } else {
+    const lane = randInt(0, L.lanes - 1);
+    S.enemies.push(createEnemy(type, laneX(L.lanes, lane), -30));
+  }
+}
+/* 旋转激光障碍 */
+function spawnLaser(l) {
+  S.lasers.push({ x: l.x, y: l.y, angle: rand(0, PI2), speed: l.dir * rand(0.9, 1.2), arm: 300, cycleT: rand(0, 1.8), life: CONFIG.levels[2].laserDur });
+}
+/* Boss 入场 */
+function spawnBoss() {
+  const B = CONFIG.boss;
+  S.boss = {
+    x: CONFIG.W / 2, y: -120, r: B.r, hp: B.hp, maxHp: B.hp, t: 0, enterT: 0,
+    phase: 1, ringCd: 1.6, aimCd: 2.2, homingCd: 2.6, flash: 0, dying: false, dieT: 0,
+  };
+  S.bossSpawned = true;
+  S.warnT = 2.5;
+  wrap.classList.add('danger');
+  setTimeout(() => wrap.classList.remove('danger'), 2200);
+  AudioSys.play('bossAlarm');
+  $('bossbar').classList.add('show');
+  $('bossbar-label').textContent = S.mode === 'endless' ? `⚠ BOSS ×${S.bossCount} ⚠` : '⚠ BOSS · 几何核心 ⚠';
+}
+/* 道具掉落判定（关卡模式变身每关仅 1 次保底；无尽模式每 45 秒可再掉一次） */
+function maybeDrop(x, y) {
+  const L = S.levelCfg;
+  const prog = S.levelTime / L.dur;
+  if (S.mode === 'endless') {
+    // 无尽模式：原始掉落概率 5%；使用大变幡后永久提升至 10%
+    const chance = CONFIG.endless.transformChance * (S.artifactUsed ? 2 : 1);
+    if (Math.random() < chance) { S.transformDropped++; dropPowerup('transform', x, y); return; }
+  } else if (S.transformDropped < CONFIG.powerups.transformMaxPerLevel) {
+    const chance = (S.transformDropped === 0 && prog > 0.5) ? 1 : CONFIG.powerups.transformChance;
+    if (Math.random() < chance) { S.transformDropped++; dropPowerup('transform', x, y); return; }
+  }
+  const r = Math.random(), P = CONFIG.powerups.dropChance;
+  // 聚宝盆（一次性）：无尽模式红包掉率暴增至 88%
+  if (S.mode === 'endless' && S.basinActive && Math.random() < CONFIG.endless.basinChance) {
+    dropPowerup('redpacket', x, y);
+    return;
+  }
+  if (r < P.bomb) dropPowerup('bomb', x, y);
+  else if (r < P.bomb + P.shield) dropPowerup('shield', x, y);
+  else if (r < P.bomb + P.shield + P.redpacket) dropPowerup('redpacket', x, y);
+}
+function dropPowerup(type, x, y) {
+  S.powerups.push({ type, x, y, t: rand(0, 6) });
+}
+
+/* ==================== 8. 粒子 / 爆炸 / 飘字 ==================== */
+function explosion(x, y, scale = 1, palette = ['#00e5ff', '#b388ff', '#7cfffb', '#eaf6ff']) {
+  const n = Math.floor(14 * scale);
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, PI2), sp = rand(60, 270 * scale);
+    S.particles.push({ type: 'shard', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.3, 0.7), size: rand(3, 7), color: pick(palette), rot: rand(0, PI2), vr: rand(-7, 7) });
+  }
+  for (let i = 0; i < Math.floor(10 * scale); i++) {
+    const a = rand(0, PI2), sp = rand(30, 150 * scale);
+    S.particles.push({ type: 'spark', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: rand(0.2, 0.45), size: rand(1.5, 3), color: pick(palette) });
+  }
+  S.particles.push({ type: 'ring', x, y, r: 8, vr: 240 * scale, life: 0.45, color: palette[0] });
+  if (S.particles.length > 520) S.particles.splice(0, S.particles.length - 520);
+}
+function popup(x, y, text, color = '#7cfffb') {
+  S.popups.push({ x, y, text, color, t: 0.9, vy: -45 });
+}
+
+/* ==================== 9. 更新逻辑 ==================== */
+/* 玩家移动与射击 */
+function updatePlayer(dt) {
+  const P = S.player;
+  const spd = CONFIG.player.speed * (Keys.has('shift') ? CONFIG.player.slowFactor : 1);
+  let dx = 0, dy = 0;
+  if (Keys.has('arrowleft') || Keys.has('a')) dx -= 1;
+  if (Keys.has('arrowright') || Keys.has('d')) dx += 1;
+  if (Keys.has('arrowup') || Keys.has('w')) dy -= 1;
+  if (Keys.has('arrowdown') || Keys.has('s')) dy += 1;
+  const l = Math.hypot(dx, dy) || 1;
+  P.x += dx / l * spd * dt;
+  P.y += dy / l * spd * dt;
+  // 键盘优先：有方向输入时清掉拖拽目标，避免残留拖拽拉扯飞机
+  if (dx !== 0 || dy !== 0) { S.dragTarget = null; S.dragId = null; }
+  // 触摸拖拽目标平滑跟随
+  if (S.dragTarget) {
+    P.x += (S.dragTarget.x - P.x) * Math.min(1, dt * 14);
+    P.y += (S.dragTarget.y - P.y) * Math.min(1, dt * 14);
+  }
+  P.x = clamp(P.x, 26, CONFIG.W - 26);
+  P.y = clamp(P.y, 40, CONFIG.H - 30);
+  if (S.invincibleT > 0) S.invincibleT -= dt;
+  // 变身倒计时
+  if (S.transformT > 0) {
+    S.transformT -= dt;
+    if (S.transformT <= 0) { S.transformT = 0; AudioSys.setBGMRate(1); }
+  }
+  // 引擎尾迹
+  S.trailCd = (S.trailCd || 0) - dt;
+  if (S.trailCd <= 0) {
+    S.trailCd = S.transformT > 0 ? 0.03 : 0.05;
+    S.particles.push({ type: 'spark', x: P.x + rand(-4, 4), y: P.y + 26, vx: rand(-15, 15), vy: rand(120, 200), life: 0.28, size: rand(1.5, 3), color: S.transformT > 0 ? CONFIG.colors.redLight : pick(['#00e5ff', '#7cfffb']) });
+  }
+  // 黄金/冷银之翼：翼尖金色/银色光粒飘散（强化皮肤辨识度）
+  if ((S.skin === 'gold' || S.skin === 'silver') && Math.random() < 0.45) {
+    const ws = Math.random() < 0.5 ? -1 : 1;
+    S.particles.push({ type: 'spark', x: P.x + ws * 40, y: P.y + rand(18, 26), vx: ws * rand(15, 40), vy: rand(30, 100), life: rand(0.3, 0.55), size: rand(1.6, 2.8), color: S.skin === 'gold' ? '#ffd76e' : '#d7e2ee' });
+  }
+  // 射击
+  P.fireCd -= dt;
+  if (S.firing && P.fireCd <= 0) {
+    firePlayer();
+    P.fireCd = S.transformT > 0 ? CONFIG.player.transformFireInterval : CONFIG.player.fireInterval;
+  }
+}
+/* 玩家开火（变身状态：弹体更大、频率更高、三连发） */
+function firePlayer() {
+  const P = S.player, tr = S.transformT > 0;
+  if (tr) {
+    [-16, 0, 16].forEach(off => S.pBullets.push({ x: P.x + off, y: P.y - 26, vx: 0, vy: -CONFIG.bullet.playerSpeed - 60, r: 8, dmg: CONFIG.bullet.transformDamage, color: CONFIG.colors.redLight }));
+    AudioSys.play('shoot2');   // 揽佬音效
+  } else {
+    [-8, 8].forEach(off => S.pBullets.push({ x: P.x + off, y: P.y - 26, vx: 0, vy: -CONFIG.bullet.playerSpeed, r: 4.5, dmg: CONFIG.bullet.damage, color: CONFIG.colors.neonBlue }));
+    AudioSys.play('shoot');
+  }
+}
+/* 玩家受击（护盾优先抵挡一次伤害）；返回是否阵亡，便于碰撞循环立即中止 */
+function hitPlayer() {
+  if (S.invincibleT > 0) return false;
+  if (S.shields > 0) {
+    S.shields--;
+    // 与受击相同的完整无敌时间：激光束/敌机群/外星人等持续接触的伤害源不会在抵挡后立刻再次命中
+    S.invincibleT = CONFIG.player.invincibleTime;
+    explosion(S.player.x, S.player.y, 0.8, [CONFIG.colors.cyan]);
+    popup(S.player.x, S.player.y - 30, '护盾抵挡!', CONFIG.colors.cyan);
+    AudioSys.play('click');
+    return false;
+  }
+  S.lives--; S.deaths++;
+  S.invincibleT = CONFIG.player.invincibleTime;
+  S.shake = { t: 0.35, p: CONFIG.effects.shakePower };
+  explosion(S.player.x, S.player.y, 1.4);
+  AudioSys.play('explosion');
+  if (S.lives <= 0) {
+    // 紧急维修（一次性）：被击毁时恢复 1 点生命并无敌 3 秒（一局仅一次；关卡/无尽模式通用）
+    if (tryEmergencyRepair()) return false;   // 复活成功：立即中止本帧剩余碰撞判定
+    startLoseAnim(); return true;   // 阵亡：失败动画已接管，立即中止碰撞判定
+  }
+  return false;
+}
+
+/* 敌机更新 */
+function updateEnemies(dt) {
+  const L = S.levelCfg;
+  for (let i = S.enemies.length - 1; i >= 0; i--) {
+    const e = S.enemies[i];
+    e.t += dt; if (e.flash > 0) e.flash -= dt;
+    switch (e.type) {
+      case 'dart':
+        e.y += e.speed * dt;
+        if (e.sway) e.x += Math.sin(e.t * 3) * 26 * dt;
+        e.fireCd -= dt;
+        if (e.fireCd <= 0 && Math.random() < L.fireChance) {
+          S.eBullets.push({ x: e.x, y: e.y + e.r, vx: 0, vy: CONFIG.bullet.enemyStraightSpeed, r: 5, color: CONFIG.colors.cyan, life: 8 });
+          e.fireCd = rand(1.2, 2.4);
+        }
+        break;
+      case 'elite':
+        if (e.y < e.stopY) e.y += e.speed * dt;
+        else {
+          e.y = e.stopY + Math.sin(e.t * 1.6) * 8;
+          e.x = e.x0 + Math.sin(e.t * 0.9) * 70;
+          e.fireCd -= dt;
+          if (e.fireCd <= 0) { eliteFan(e); e.fireCd = 1.9; }
+        }
+        e.rot += dt;
+        e.life -= dt;
+        if (e.life < 1.5) e.y += 260 * dt;   // 离场
+        break;
+      case 'speeder':
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        break;
+      case 'goldplane':   // 每日彩蛋：慢速下坠 + 正弦巡游 + 金色粒子尾迹，不射击
+        e.y += e.speed * dt;
+        e.x = e.x0 + Math.sin(e.wave + e.t * 1.8) * 70;
+        if (Math.random() < 0.6) S.particles.push({ type: 'spark', x: e.x + rand(-6, 6), y: e.y + 16, vx: rand(-12, 12), vy: rand(30, 80), life: rand(0.25, 0.45), size: rand(1.5, 2.6), color: '#ffd76e' });
+        break;
+      case 'switcher':
+        e.y += e.speed * dt;
+        e.fireCd -= dt;
+        if (e.fireCd <= 0 && Math.random() < L.fireChance) {
+          S.eBullets.push({ x: e.x, y: e.y + e.r, vx: 0, vy: CONFIG.bullet.enemyStraightSpeed, r: 5, color: CONFIG.colors.orange, life: 8 });
+          e.fireCd = rand(1.5, 3);
+        }
+        // 未被击毁时偶尔切换航道
+        e.switchCd -= dt;
+        if (e.switchCd <= 0) {
+          e.switchCd = rand(2, 3.5);
+          e.targetX = laneX(L.lanes, randInt(0, L.lanes - 1));
+          e.tween = 0.9;
+        }
+        if (e.tween > 0) { e.tween -= dt; e.x += (e.targetX - e.x) * Math.min(1, dt * 4); }
+        break;
+    }
+    // 出屏清理
+    if (e.y > CONFIG.H + 60 || e.x < -60 || e.x > CONFIG.W + 60) S.enemies.splice(i, 1);
+  }
+}
+/* 精英扇形弹幕（5 发，始终向下展开——修复：原 clamp 方向错误导致 5 发重叠成 1 发） */
+function eliteFan(e) {
+  const aim = Math.atan2(S.player.y - e.y, S.player.x - e.x);
+  const tilt = clamp(aim - Math.PI / 2, -0.45, 0.45);   // 扇形以正下方为中心、向玩家倾斜（受限）
+  for (let i = -2; i <= 2; i++) {
+    const a = Math.PI / 2 + tilt + i * 0.24;
+    S.eBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * CONFIG.bullet.enemyFanSpeed, vy: Math.sin(a) * CONFIG.bullet.enemyFanSpeed, r: 5.5, color: CONFIG.colors.neonPurple, life: 9 });
+  }
+  AudioSys.play('shoot');
+}
+
+/* ---------- 无尽模式专属逻辑 ---------- */
+/* 无尽模式更新：Boss 每 20 秒刷新 + 外星人障碍每 10 秒刷新 + 小兵快速刷新 */
+function updateEndless(dt) {
+  S.endlessT += dt;
+  // Boss 每 20 秒刷新一次（场上已有 Boss 则顺延到下一轮）
+  S.bossTimer -= dt;
+  if (S.bossTimer <= 0) {
+    S.bossTimer = CONFIG.endless.bossEvery;
+    if (!S.boss) { S.bossCount++; spawnBoss(); }
+  }
+  // MV 外星人障碍每 10 秒刷新一次
+  S.alienTimer -= dt;
+  if (S.alienTimer <= 0) {
+    S.alienTimer = CONFIG.endless.alienEvery;
+    spawnAlien();
+  }
+  // 小兵刷新较快（Boss 在场时稍放缓节奏）
+  S.spawnTimer -= dt;
+  if (S.spawnTimer <= 0) {
+    spawnEndlessEnemy();
+    S.spawnTimer = CONFIG.endless.spawnInterval * rand(0.8, 1.2) * (S.boss ? 1.8 : 1);
+  }
+}
+/* 无尽模式敌机：所有类型循环出现，小兵概率高 */
+function spawnEndlessEnemy() {
+  const type = pickType(CONFIG.endless.types);
+  if (type === 'speeder') {
+    const fromLeft = Math.random() < 0.5;
+    const e = createEnemy('speeder', fromLeft ? -24 : CONFIG.W + 24, rand(40, 320));
+    e.vx = (fromLeft ? 1 : -1) * rand(340, 430);
+    e.vy = rand(-40, 40);
+    S.enemies.push(e);
+  } else {
+    const lane = randInt(0, 4);   // 5 条固定航道
+    S.enemies.push(createEnemy(type, laneX(5, lane), -30));
+  }
+}
+/* MV里的外星人障碍：从屏幕边缘任意位置刷新，沿指向屏幕内的任意方向直线运动 */
+function spawnAlien() {
+  const edge = randInt(0, 3);   // 0 上边缘 1 下边缘 2 左边缘 3 右边缘
+  let x, y, a;
+  if (edge === 0)      { x = rand(0, CONFIG.W); y = -26; a = rand(0.2, Math.PI - 0.2); }
+  else if (edge === 1) { x = rand(0, CONFIG.W); y = CONFIG.H + 26; a = rand(Math.PI + 0.2, PI2 - 0.2); }
+  else if (edge === 2) { x = -26; y = rand(0, CONFIG.H); a = rand(-Math.PI / 2 + 0.2, Math.PI / 2 - 0.2); }
+  else                 { x = CONFIG.W + 26; y = rand(0, CONFIG.H); a = rand(Math.PI / 2 + 0.2, Math.PI * 1.5 - 0.2); }
+  S.aliens.push({
+    x, y,
+    vx: Math.cos(a), vy: Math.sin(a),   // 方向保证朝向屏幕内部
+    t: 0, rot: rand(0, PI2),
+  });
+}
+/* 技能图标状态刷新（王者荣耀式圆形技能：就绪呼吸光 / 冷却遮罩+数字 / 生效中淡蓝圈） */
+function updateSkillUI() {
+  const btn = $('btn-skill');
+  const show = (S.state === 'playing' || S.state === 'paused') && S.fireSupportUsed;
+  btn.classList.toggle('show', show);
+  if (!show) return;
+  drawFireSupportIcon($('skill-icon'), false);   // 技能图标
+  const cd = $('skill-cd'), num = $('skill-num');
+  if (S.wingmen.length > 0) {
+    // 生效中：淡蓝光圈 + 剩余生效秒数
+    cd.style.background = 'conic-gradient(rgba(0,229,255,.35) ' + (S.fireSupportT / CONFIG.fireSupport.duration * 360) + 'deg, transparent 0deg)';
+    num.textContent = Math.ceil(S.fireSupportT);
+    btn.classList.remove('ready');
+  } else if (S.fireSupportCd > 0) {
+    // 冷却中：深色遮罩按冷却进度消退 + 剩余冷却秒数
+    const pct = 1 - S.fireSupportCd / CONFIG.fireSupport.cooldown;
+    cd.style.background = 'conic-gradient(rgba(3,6,16,.78) ' + (pct * 360) + 'deg, transparent 0deg)';
+    num.textContent = Math.ceil(S.fireSupportCd);
+    btn.classList.remove('ready');
+  } else {
+    // 就绪：无遮罩 + 呼吸发光
+    cd.style.background = 'none';
+    num.textContent = '';
+    btn.classList.add('ready');
+  }
+}
+/* 火力支援（永久）：按 M 召唤两个伴生僚机，10 秒生效、结束后冷却 8 秒 */
+function tryCastFireSupport() {
+  if (S.state !== 'playing' || !S.fireSupportUsed) return;
+  if (S.wingmen.length > 0 || S.fireSupportCd > 0) return;   // 生效中或冷却中
+  S.fireSupportT = CONFIG.fireSupport.duration;
+  S.wingmanFireCd = 0.3;
+  S.wingmen = [{ side: -1, fade: 0, fading: false }, { side: 1, fade: 0, fading: false }];
+  AudioSys.play('transform');   // 大展宏图
+  sfxWingFadeIn();              // 渐显音效
+  popup(S.player.x, S.player.y - 40, '火力支援！', CONFIG.colors.neonBlue);
+}
+/* 僚机更新：跟随主机左右偏下、渐显/渐隐、每秒锁定最近敌机发射追踪弹 */
+function updateFireSupport(dt) {
+  if (S.fireSupportCd > 0) S.fireSupportCd -= dt;
+  if (S.wingmen.length === 0) return;
+  // 生效倒计时结束 → 开始渐隐
+  S.fireSupportT -= dt;
+  if (S.fireSupportT <= 0 && !S.wingmen[0].fading) {
+    S.wingmen.forEach(w => { w.fading = true; });
+    sfxWingFadeOut();   // 渐隐音效（渐显的倒放）
+  }
+  // 渐显 / 渐隐透明度
+  const fadeSpd = 1 / CONFIG.fireSupport.fadeDur;
+  for (const w of S.wingmen) w.fade = clamp(w.fade + (w.fading ? -fadeSpd * dt : fadeSpd * dt), 0, 1);
+  // 渐隐完成 → 移除僚机并进入冷却
+  if (S.wingmen[0].fading && S.wingmen[0].fade <= 0) {
+    S.wingmen = [];
+    S.fireSupportCd = CONFIG.fireSupport.cooldown;
+    return;
+  }
+  // 每秒发射追踪弹（锁定最近敌机）
+  if (S.wingmen[0].fading) return;
+  S.wingmanFireCd -= dt;
+  if (S.wingmanFireCd <= 0) {
+    S.wingmanFireCd = 1;
+    const target = nearestEnemy(S.player.x, S.player.y);
+    if (target) {
+      const dmg = S.transformT > 0 ? CONFIG.bullet.transformDamage : CONFIG.bullet.damage;   // 与主机本体相同伤害
+      for (const w of S.wingmen) {
+        const ang = Math.atan2(target.y - w.y, target.x - w.x);
+        S.pBullets.push({ x: w.x, y: w.y, vx: Math.cos(ang) * CONFIG.fireSupport.wingmanSpeed, vy: Math.sin(ang) * CONFIG.fireSupport.wingmanSpeed, r: 4.5, dmg, color: CONFIG.colors.neonPurple, life: 6, homing: true, homingEnemy: true, wspeed: CONFIG.fireSupport.wingmanSpeed, turnrate: CONFIG.fireSupport.wingmanTurn, tgt: target });
+      }
+      sfxWingShoot();   // 僚机发射音效
+    }
+  }
+}
+/* 领域：错乱时空 —— 每 12 秒 66% 概率进入时空静止 6 秒（世界冻结，英雄正常） */
+function updateTimeField(dt) {
+  if (S.timeStopT > 0) {
+    S.timeStopT -= dt;
+    if (S.timeStopT <= 0) {
+      // 状态结束：恢复本局背景音乐
+      AudioSys.playBGM(S.mode === 'endless' ? 'menu' : S.levelCfg.bgm);
+    }
+    return;
+  }
+  if (S.timeStopTimer > 0) { S.timeStopTimer -= dt; return; }
+  S.timeStopTimer = CONFIG.timeField.interval;
+  if (Math.random() < CONFIG.timeField.chance) {
+    S.timeStopT = CONFIG.timeField.duration;
+    AudioSys.playBGM('timeStop', { loop: false });   // 时空暂停音效（一次性，约 6 秒）
+    S.shake = { t: 0.5, p: 4 };                       // 进入瞬间抖动
+    popup(CONFIG.W / 2, 180, '时空静止！', CONFIG.colors.neonPurple);
+  }
+}
+/* I can fly 皮肤：每 10 秒 50% 概率进入 8 秒高空飞行（无视碰撞，碰到子弹照常受伤；期间切换专属 BGM） */
+function updateHighFly(dt) {
+  if (S.skin !== 'feather') { S.highFlyT = 0; return; }
+  if (S.highFlyT > 0) {
+    S.highFlyT -= dt;
+    if (S.highFlyT <= 0) {
+      // 高空飞行结束：恢复本局背景音乐
+      AudioSys.playBGM(S.mode === 'endless' ? 'menu' : S.levelCfg.bgm);
+    }
+  } else {
+    S.highFlyTimer -= dt;
+    if (S.highFlyTimer <= 0) {
+      S.highFlyTimer = CONFIG.highFly.cycle;
+      if (Math.random() < CONFIG.highFly.chance) {
+        S.highFlyT = CONFIG.highFly.duration;
+        popup(S.player.x, S.player.y - 46, '高空飞行！', CONFIG.colors.white);
+        AudioSys.playBGM('highFly', { loop: false });   // 专属 BGM（约 8 秒，一次性播放）
+      }
+    }
+  }
+}
+/* 外星人障碍更新：直线运动与旋转都随时间越来越快 */
+function updateAliens(dt) {
+  const E = CONFIG.endless;
+  for (let i = S.aliens.length - 1; i >= 0; i--) {
+    const a = S.aliens[i];
+    a.t += dt;
+    a.rot += Math.min(E.alienBaseRot + E.alienRotAccel * a.t, E.alienMaxRot) * dt;
+    const spd = Math.min(E.alienBaseSpeed + E.alienAccel * a.t, E.alienMaxSpeed);
+    a.x += a.vx * spd * dt;
+    a.y += a.vy * spd * dt;
+    if (a.x < -180 || a.x > CONFIG.W + 180 || a.y < -180 || a.y > CONFIG.H + 180) S.aliens.splice(i, 1);
+  }
+}
+
+/* Boss 更新（两阶段：环形弹幕 → 加速 + 追踪弹） */
+function updateBoss(dt) {
+  const b = S.boss;
+  if (b.dying) {   // 死亡演出：连续爆炸
+    b.dieT -= dt;
+    if (Math.random() < 0.5) explosion(b.x + rand(-70, 70), b.y + rand(-70, 70), 1.6);
+    if (b.dieT <= 0) {
+      S.boss = null;
+      $('bossbar').classList.remove('show');
+      popup(CONFIG.W / 2, 160, 'BOSS 击破!', CONFIG.colors.yellow);
+      if (S.mode === 'endless') { /* 无尽模式：继续战斗，下一只 Boss 20 秒后刷新 */ }
+      else levelClear();
+    }
+    return;
+  }
+  b.t += dt; b.enterT = Math.min(1, b.enterT + dt * 0.7);
+  if (b.flash > 0) b.flash -= dt;
+  // 入场后左右游走
+  b.y += (CONFIG.boss.enterY - b.y) * Math.min(1, dt * 1.2);
+  if (b.enterT >= 1) b.x = CONFIG.W / 2 + Math.sin(b.t * 0.7) * 215;
+  // 阶段切换：血量低于 50%
+  if (b.phase === 1 && b.hp < b.maxHp * 0.5) {
+    b.phase = 2;
+    popup(b.x, b.y - 90, '第二阶段！', CONFIG.colors.red);
+    $('bossbar-label').textContent = '⚠ BOSS · 暴走核心 ⚠';
+  }
+  const fast = b.phase === 2;
+  // 环形弹幕
+  b.ringCd -= dt;
+  if (b.ringCd <= 0) {
+    b.ringCd = fast ? CONFIG.boss.ringCd2 : CONFIG.boss.ringCd;
+    const n = fast ? 26 : 18;
+    const off = b.t * (fast ? 0.9 : 0.4);
+    for (let i = 0; i < n; i++) {
+      const a = off + i * PI2 / n;
+      S.eBullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * CONFIG.bullet.bossRingSpeed, vy: Math.sin(a) * CONFIG.bullet.bossRingSpeed, r: 6, color: CONFIG.colors.neonPurple, life: 9 });
+    }
+    if (fast) for (let i = 0; i < n; i++) {   // 阶段2 双环错位
+      const a = off + Math.PI / n + i * PI2 / n;
+      S.eBullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * CONFIG.bullet.bossRingSpeed, vy: Math.sin(a) * CONFIG.bullet.bossRingSpeed, r: 6, color: CONFIG.colors.neonPurple, life: 9 });
+    }
+    AudioSys.play('shoot');
+  }
+  // 瞄准弹
+  b.aimCd -= dt;
+  if (b.aimCd <= 0) {
+    b.aimCd = CONFIG.boss.aimCd;
+    const aim = Math.atan2(S.player.y - b.y, S.player.x - b.x);
+    for (let i = -2; i <= 2; i++) {
+      const a = aim + i * 0.2;
+      S.eBullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * CONFIG.bullet.bossAimSpeed, vy: Math.sin(a) * CONFIG.bullet.bossAimSpeed, r: 5.5, color: CONFIG.colors.cyan, life: 8 });
+    }
+  }
+  // 追踪弹（仅阶段 2）
+  if (fast) {
+    b.homingCd -= dt;
+    if (b.homingCd <= 0) {
+      b.homingCd = CONFIG.boss.homingCd;
+      for (let i = 0; i < 3; i++) {
+        const a = -Math.PI / 2 + (i - 1) * 0.5;
+        S.eBullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * CONFIG.bullet.homingSpeed, vy: Math.sin(a) * CONFIG.bullet.homingSpeed, r: 6, color: CONFIG.colors.orange, life: 7, homing: true });
+      }
+    }
+  }
+}
+
+/* 激光障碍更新（预览 → 激活 循环，时间到渐隐消失） */
+function updateLasers(dt) {
+  for (let i = S.lasers.length - 1; i >= 0; i--) {
+    const l = S.lasers[i];
+    l.angle += l.speed * dt;
+    l.cycleT += dt;
+    l.life -= dt;
+    if (l.life <= 0) S.lasers.splice(i, 1);
+  }
+}
+/* 激光是否处于可伤害状态 */
+function laserActive(l) {
+  const m = l.cycleT % 3.3;         // 周期 3.3s = 0.9s 预览 + 2.4s 激活
+  return m >= 0.9 && l.life > 0.5;
+}
+
+/* 更新子弹 / 道具 / 粒子 / 飘字 */
+function updateBullets(dt, frozen) {
+  S.targetMarks = [];   // 每帧刷新追踪弹锁定标记
+  // 玩家子弹（含僚机追踪弹：锁定最近敌机持续追踪，目标丢失自动转头）
+  for (let i = S.pBullets.length - 1; i >= 0; i--) {
+    const b = S.pBullets[i];
+    if (b.homingEnemy) {
+      // 锁定目标未丢失则持续追踪直至击中；目标被击毁/出屏则转头锁定下一个最近敌机
+      if (b.tgt && !isTargetAlive(b.tgt)) b.tgt = null;
+      if (!b.tgt) b.tgt = nearestEnemy(b.x, b.y);
+      if (b.tgt) {
+        if (!S.targetMarks.includes(b.tgt)) S.targetMarks.push(b.tgt);   // 实时标记最近目标
+        const a = Math.atan2(b.tgt.y - b.y, b.tgt.x - b.x);
+        let cur = Math.atan2(b.vy, b.vx), diff = a - cur;
+        while (diff > Math.PI) diff -= PI2;
+        while (diff < -Math.PI) diff += PI2;
+        const turn = b.turnrate || 1.8;   // 转向速率（僚机弹更高，咬住快速目标）
+        const na = cur + clamp(diff, -turn * dt, turn * dt);
+        const spd = b.wspeed || CONFIG.bullet.homingSpeed;
+        b.vx = Math.cos(na) * spd;
+        b.vy = Math.sin(na) * spd;
+      }
+    }
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.life !== undefined) b.life -= dt;
+    if ((b.life !== undefined && b.life <= 0) || b.y < -30 || b.y > CONFIG.H + 30 || b.x < -30 || b.x > CONFIG.W + 30) S.pBullets.splice(i, 1);
+  }
+  // 敌弹（含 Boss 追踪弹：转向玩家）；时空静止时敌弹冻结不动
+  if (frozen) return;
+  for (let i = S.eBullets.length - 1; i >= 0; i--) {
+    const b = S.eBullets[i];
+    if (b.homing) {
+      const a = Math.atan2(S.player.y - b.y, S.player.x - b.x);
+      let cur = Math.atan2(b.vy, b.vx), diff = a - cur;
+      while (diff > Math.PI) diff -= PI2;
+      while (diff < -Math.PI) diff += PI2;
+      const na = cur + clamp(diff, -1.8 * dt, 1.8 * dt);
+      b.vx = Math.cos(na) * CONFIG.bullet.homingSpeed;
+      b.vy = Math.sin(na) * CONFIG.bullet.homingSpeed;
+    }
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    b.life -= dt;
+    if (b.life <= 0 || b.y < -30 || b.y > CONFIG.H + 30 || b.x < -30 || b.x > CONFIG.W + 30) S.eBullets.splice(i, 1);
+  }
+}
+function updatePowerups(dt) {
+  for (let i = S.powerups.length - 1; i >= 0; i--) {
+    const p = S.powerups[i];
+    p.y += CONFIG.powerups.fallSpeed * dt;
+    p.t += dt;
+    if (p.y > CONFIG.H + 30) S.powerups.splice(i, 1);
+  }
+}
+function updateParticles(dt) {
+  for (let i = S.particles.length - 1; i >= 0; i--) {
+    const p = S.particles[i];
+    p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    if (p.type === 'shard') { p.rot += p.vr * dt; p.vy += 200 * dt; }
+    if (p.type === 'spark') { p.vx *= 0.98; p.vy *= 0.98; }
+    if (p.type === 'ring') p.r += p.vr * dt;
+    if (p.life <= 0) S.particles.splice(i, 1);
+  }
+  for (let i = S.popups.length - 1; i >= 0; i--) {
+    const p = S.popups[i];
+    p.y += p.vy * dt; p.t -= dt;
+    if (p.t <= 0) S.popups.splice(i, 1);
+  }
+}
+
+/* 击毁敌机（giveScore=false 表示被撞击，不计分不发红包） */
+function killEnemy(e, giveScore = true) {
+  explosion(e.x, e.y, e.type === 'elite' ? 1.5 : 1);
+  if (giveScore) {
+    S.score += e.score;
+    popup(e.x, e.y, '+' + e.score, CONFIG.colors.yellow);
+    // 飞行日志：累计击毁数
+    S.totalKills++;
+    storeSet(CONFIG.storage.logKills, S.totalKills);
+    // 每日彩蛋·金飞机：击落得红包（当天首拾奖励高，跨天惰性重置）
+    if (e.type === 'goldplane') {
+      checkGoldDay();   // 跨天惰性重置
+      const bonus = S.goldFirst ? CONFIG.gold.firstBonus : CONFIG.gold.repeatBonus;
+      S.goldFirst = 1;
+      storeSet(CONFIG.storage.goldFirst, 1);
+      S.redPacketsRun += bonus; S.levelRP += bonus; S.totalRP += bonus;   // 红包按实际数量计入（HUD 右上角显示 +5）
+      storeSet(CONFIG.storage.redPackets, S.totalRP);
+      popup(e.x, e.y - 24, '金飞机 +' + bonus + ' 🧧', CONFIG.colors.yellow);
+      AudioSys.play('redPacket');
+    }
+  }
+  maybeDrop(e.x, e.y);
+  AudioSys.play('explosion');
+}
+
+/* 碰撞检测（圆形碰撞 + 线段距离） */
+function collisions() {
+  const P = S.player;
+  // 玩家子弹 × 敌机
+  for (let i = S.pBullets.length - 1; i >= 0; i--) {
+    const b = S.pBullets[i];
+    let hit = false;
+    for (let j = S.enemies.length - 1; j >= 0; j--) {
+      const e = S.enemies[j];
+      if (dist(b.x, b.y, e.x, e.y) < e.r + b.r) {
+        e.hp -= b.dmg; e.flash = 0.08;
+        for (let k = 0; k < 3; k++) S.particles.push({ type: 'spark', x: b.x, y: b.y, vx: rand(-80, 80), vy: rand(-80, 80), life: 0.2, size: 2, color: '#eaf6ff' });
+        if (e.hp <= 0) { S.enemies.splice(j, 1); killEnemy(e); }
+        hit = true;
+        break;
+      }
+    }
+    if (hit) { S.pBullets.splice(i, 1); continue; }
+    // 玩家子弹 × Boss
+    if (S.boss && !S.boss.dying && dist(b.x, b.y, S.boss.x, S.boss.y) < S.boss.r + b.r) {
+      S.boss.hp -= b.dmg; S.boss.flash = 0.12;
+      for (let k = 0; k < 3; k++) S.particles.push({ type: 'spark', x: b.x, y: b.y, vx: rand(-90, 90), vy: rand(-90, 90), life: 0.2, size: 2, color: '#eaf6ff' });
+      if (S.boss.hp <= 0) { S.boss.hp = 0; S.boss.dying = true; S.boss.dieT = 1.5; S.score += CONFIG.boss.score; S.totalKills++; storeSet(CONFIG.storage.logKills, S.totalKills); S.bossKills++; storeSet(CONFIG.storage.bossKills, S.bossKills); popup(S.boss.x, S.boss.y - 80, '+' + CONFIG.boss.score, CONFIG.colors.yellow); }
+      S.pBullets.splice(i, 1);
+    }
+  }
+  // 受伤判定：以中心圆形机舱为边界（不包含机翼）
+  const hx = P.x, hy = P.y + CONFIG.player.hitOffsetY, hr = CONFIG.player.hitRadius;
+  // 敌弹 × 玩家
+  for (let i = S.eBullets.length - 1; i >= 0; i--) {
+    const b = S.eBullets[i];
+    if (dist(b.x, b.y, hx, hy) < hr + b.r) { S.eBullets.splice(i, 1); if (hitPlayer()) return; }   // 阵亡后立即退出，避免遍历被重置的数组
+  }
+  // 敌机 × 玩家（撞击双方；高空飞行时无视碰撞）
+  for (let i = S.enemies.length - 1; i >= 0; i--) {
+    const e = S.enemies[i];
+    if (S.highFlyT > 0) continue;
+    if (dist(e.x, e.y, hx, hy) < e.r + hr) { S.enemies.splice(i, 1); killEnemy(e, false); if (hitPlayer()) return; }
+  }
+  // 旋转激光 × 玩家（高空飞行时无视）
+  for (const l of S.lasers) {
+    if (!laserActive(l) || S.highFlyT > 0) continue;
+    const ax = l.x + Math.cos(l.angle) * l.arm, ay = l.y + Math.sin(l.angle) * l.arm;
+    const bx = l.x - Math.cos(l.angle) * l.arm, by = l.y - Math.sin(l.angle) * l.arm;
+    if (distSeg(hx, hy, l.x, l.y, ax, ay) < hr + 6 || distSeg(hx, hy, l.x, l.y, bx, by) < hr + 6) { if (hitPlayer()) return; }
+  }
+  // MV 外星人障碍 × 玩家（两个旋转体分别判定；高空飞行时无视）
+  for (const a of S.aliens) {
+    if (S.highFlyT > 0) continue;
+    for (let k = 0; k < 2; k++) {
+      const ang = a.rot + k * Math.PI;
+      const px = a.x + Math.cos(ang) * CONFIG.endless.alienOrbit;
+      const py = a.y + Math.sin(ang) * CONFIG.endless.alienOrbit;
+      if (dist(px, py, hx, hy) < CONFIG.endless.alienRadius + hr) { if (hitPlayer()) return; }
+    }
+  }
+  // 道具 × 玩家（靠近自动拾取）
+  for (let i = S.powerups.length - 1; i >= 0; i--) {
+    const p = S.powerups[i];
+    if (dist(p.x, p.y, P.x, P.y) < CONFIG.powerups.pickupRadius) {
+      applyPowerup(p.type);
+      S.powerups.splice(i, 1);
+    }
+  }
+}
+/* 拾取道具效果 */
+function applyPowerup(type) {
+  switch (type) {
+    case 'bomb':
+      S.bombs = Math.min(S.bombs + 1, 9);
+      popup(S.player.x, S.player.y - 30, '炸弹 +1', CONFIG.colors.yellow);
+      AudioSys.play('click');
+      break;
+    case 'shield':
+      S.shields = Math.min(S.shields + 1, 3);
+      popup(S.player.x, S.player.y - 30, '护盾 +1', CONFIG.colors.cyan);
+      AudioSys.play('click');
+      break;
+    case 'redpacket':
+      S.redPacketsRun++; S.levelRP++; S.totalRP++;
+      storeSet(CONFIG.storage.redPackets, S.totalRP);   // 红包计入总数并持久化
+      popup(S.player.x, S.player.y - 30, '🧧 红包 +1', CONFIG.colors.yellow);
+      AudioSys.play('redPacket');   // 来财音效
+      break;
+    case 'transform':
+      S.transformT = Math.min(S.transformT + CONFIG.powerups.transformDuration, 20);
+      if (S.transformT > 0 && S.transformT <= CONFIG.powerups.transformDuration) AudioSys.setBGMRate(2);  // 首次进入变身 → BGM 2 倍速
+      popup(S.player.x, S.player.y - 30, '变身！', CONFIG.colors.red);
+      S.flash = Math.max(S.flash, 0.18);
+      AudioSys.play('transform');   // 大展宏图音效
+      break;
+  }
+}
+
+/* 使用炸弹（B 键 / 按钮）：清屏 + 对 Boss 造成重创 */
+function useBomb() {
+  if (S.state !== 'playing' || S.bombs <= 0) return;
+  S.bombs--;
+  S.flash = 0.35;
+  S.shake = { t: 0.4, p: 9 };
+  AudioSys.play('explosion');
+  for (const b of S.eBullets) explosion(b.x, b.y, 0.4);
+  S.eBullets = [];
+  for (let i = S.enemies.length - 1; i >= 0; i--) {
+    const e = S.enemies[i];
+    S.enemies.splice(i, 1);
+    killEnemy(e);
+  }
+  if (S.boss && !S.boss.dying) {
+    S.boss.hp -= S.boss.maxHp * 0.08;
+    S.boss.flash = 0.25;
+    if (S.boss.hp <= 0) { S.boss.hp = 0; S.boss.dying = true; S.boss.dieT = 1.5; S.score += CONFIG.boss.score; S.totalKills++; storeSet(CONFIG.storage.logKills, S.totalKills); S.bossKills++; storeSet(CONFIG.storage.bossKills, S.bossKills); }
+  }
+}
+
+/* 关卡胜利（计时结束 / Boss 击破）→ 胜利动画 */
+function levelClear() {
+  S.state = 'winAnim';
+  S.animT = 0;
+  S.animBaseY = S.player.y;   // 记录胜利动画起始高度（上下抖动后飞离）
+  S.firing = false;
+  S.wingmen = []; S.fireSupportT = 0; S.fireSupportCd = 0;   // 清理僚机
+  S.highFlyT = 0;
+  S.timeStopT = 0;   // 清理时空静止
+  AudioSys.setBGMRate(1);
+  AudioSys.stopBGM();
+  // 清空弹幕并引爆残余敌机（纯演出，不计分）
+  for (const b of S.eBullets) explosion(b.x, b.y, 0.4);
+  S.eBullets = [];
+  for (let i = S.enemies.length - 1; i >= 0; i--) {
+    const e = S.enemies[i];
+    S.enemies.splice(i, 1);
+    explosion(e.x, e.y, e.type === 'elite' ? 1.5 : 1);
+  }
+  S.powerups = [];
+  S.lasers = [];
+}
+/* 玩家阵亡 → 失败动画（抖动后爆炸） */
+function startLoseAnim() {
+  S.state = 'loseAnim';
+  S.animT = 0;
+  S.playerDead = false;
+  S.firing = false;
+  S.wingmen = []; S.fireSupportT = 0; S.fireSupportCd = 0;   // 清理僚机
+  S.highFlyT = 0;
+  S.timeStopT = 0;   // 清理时空静止
+  AudioSys.setBGMRate(1);
+  AudioSys.stopBGM();
+  for (const b of S.eBullets) explosion(b.x, b.y, 0.3);
+  S.eBullets = [];
+}
+function updateWinLoseAnim(dt) {
+  S.animT += dt;
+  if (S.state === 'winAnim') {
+    // 胜利：上下抖动 → 向上飞离页面
+    if (S.animT < 0.9) S.player.y = S.animBaseY + Math.sin(S.animT * 14) * 5;
+    else S.player.y -= 950 * dt;
+    if (S.player.y < -90) showClearScreen();
+  } else {
+    // 失败：各方向抖动 → 爆炸
+    if (S.animT < 0.65) {
+      S.player.x += rand(-14, 14);
+      S.player.y += rand(-14, 14);
+    } else if (!S.playerDead) {
+      S.playerDead = true;
+      explosion(S.player.x, S.player.y, 2.6, ['#ff3b5c', '#ff9f43', '#ffe66d', '#eaf6ff']);
+      S.shake = { t: 0.5, p: 11 };
+      AudioSys.play('explosion');
+    }
+    if (S.animT > 1.5) showGameOver();
+  }
+}
+
+/* 主更新（仅在 playing 状态执行游戏逻辑） */
+function update(dt) {
+  if (S.state === 'playing') {
+    S.levelTime += dt;
+    S.totalSeconds += dt;   // 飞行日志：累计飞行时长
+    updatePlayer(dt);
+    updateHighFly(dt);
+    updateFireSupport(dt);
+    updateTimeField(dt);    // 领域：错乱时空判定
+    const frozen = S.timeStopT > 0;   // 时空静止：世界冻结，我方英雄正常
+    if (S.mode === 'endless') {
+      if (!frozen) updateEndless(dt);   // 无尽模式：敌机循环 + Boss / 外星人定时刷新
+    } else {
+      const L = S.levelCfg;
+      // 关卡流程
+      if (S.level < 3 && S.levelTime >= L.dur) { levelClear(); return; }
+      if (S.level === 3 && !S.bossSpawned && S.levelTime >= L.bossAt) spawnBoss();
+      // 旋转激光生成（按时间表逐个刷新；用局内计数，避免污染 CONFIG 导致后续对局不再刷新）
+      if (L.lasers) {
+        while (S.laserIdx < L.lasers.length && S.levelTime >= L.lasers[S.laserIdx].t) {
+          spawnLaser(L.lasers[S.laserIdx]);
+          S.laserIdx++;
+        }
+      }
+      // 敌机生成
+      if (!frozen) {
+        S.spawnTimer -= dt;
+        if (S.spawnTimer <= 0 && !(S.level === 3 && S.bossSpawned)) {
+          spawnEnemy();
+          S.spawnTimer = L.spawnInterval * rand(0.8, 1.2);
+        }
+      }
+    }
+    // 每日彩蛋·金飞机：当天严格仅出现一次（关卡模式第 1 关 / 无尽模式，出现过后当天不再出现）
+    checkGoldDay();
+    if (!frozen && !S.goldSpawned && !S.goldShown && (S.mode === 'endless' || S.level === 1) && S.levelTime >= S.goldAt) spawnGoldPlane();
+    // 时空静止时：敌机 / Boss / 激光 / 外星人全部冻结
+    if (!frozen) {
+      updateEnemies(dt);
+      if (S.boss) updateBoss(dt);
+      if (S.state !== 'playing') return;   // Boss 击破触发过关动画后，中止本帧剩余逻辑
+      updateLasers(dt);
+      updateAliens(dt);
+    }
+    updateBullets(dt, frozen);   // 冻结时敌弹不移动，玩家子弹正常
+    updatePowerups(dt);
+    collisions();
+  }
+  updateParticles(dt);
+  if (S.state === 'winAnim' || S.state === 'loseAnim') updateWinLoseAnim(dt);
+  // 故障抖动计时器
+  if (S.state !== 'menu' && S.state !== 'guide' && S.state !== 'shop') {
+    S.glitchNext -= dt;
+    if (S.glitchNext <= 0) {
+      S.glitch = { y: rand(0, CONFIG.H - 40), h: rand(14, 50), t: 0.12, dx: rand(-14, 14) };
+      S.glitchNext = rand(CONFIG.effects.glitchEvery[0], CONFIG.effects.glitchEvery[1]);
+      cv.classList.add('glitch');
+      setTimeout(() => cv.classList.remove('glitch'), 160);
+    }
+  }
+  if (S.glitch && S.glitch.t > 0) S.glitch.t -= dt;
+  if (S.flash > 0) S.flash -= dt * 1.6;
+  if (S.shake) { S.shake.t -= dt; if (S.shake.t <= 0) S.shake = null; }
+  if (S.warnT > 0) S.warnT -= dt;
+  if (S.banner) { S.banner.t -= dt; if (S.banner.t <= 0) S.banner = null; }
+}
+
+/* ==================== 10. 绘制 ==================== */
+/* ---------- MV 外星人障碍 ---------- */
+/* 加载外星人.png 并抠出两个外星人（亮度抠图：亮色主体保留、暗色背景透明化） */
+function loadAlienImage() {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      S.alienSpr = cutAliens(img);
+      console.info('[图像] 外星人.png 双人抠图完成');
+    } catch (e) {
+      console.warn('[图像] 外星人抠图失败，使用几何占位:', e);
+    }
+  };
+  img.onerror = () => console.warn('[图像] 未找到外星人.png → 使用几何抽象外星人占位');
+  img.src = CONFIG.audio.desktopDir + encodeURI('外星人.png');
+}
+/* 按配置区域切出两个外星人，亮度低于阈值的背景像素透明化 */
+function cutAliens(img) {
+  return CONFIG.endless.alienRects.map(([sx, sy, sw, sh]) => {
+    const c = document.createElement('canvas');
+    c.width = sw; c.height = sh;
+    const c2 = c.getContext('2d');
+    c2.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    try {
+      const data = c2.getImageData(0, 0, sw, sh);
+      const d = data.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = (d[i] + d[i + 1] + d[i + 2]) / 3;
+        d[i + 3] = Math.round(clamp((lum - 70) / 90, 0, 1) * 255);   // 暗背景 → 透明
+      }
+      c2.putImageData(data, 0, 0);
+    } catch (e) { /* 画布被污染等异常时原样使用子图 */ }
+    return c;
+  });
+}
+/* 绘制外星人障碍：两个外星人绕共同中心旋转 */
+function drawAlienPair(a) {
+  const E = CONFIG.endless;
+  for (let k = 0; k < 2; k++) {
+    const ang = a.rot + k * Math.PI;
+    const px = a.x + Math.cos(ang) * E.alienOrbit;
+    const py = a.y + Math.sin(ang) * E.alienOrbit;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(ang + Math.PI / 2);   // 朝向旋转切线方向
+    const s = (E.alienRadius + 6) * 2;
+    if (S.alienSpr[k]) ctx.drawImage(S.alienSpr[k], -s / 2, -s / 2, s, s);
+    else drawAlienFallback();
+    ctx.restore();
+    // 警示光圈
+    ctx.strokeStyle = 'rgba(255,159,67,0.55)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(px, py, E.alienRadius + 4, 0, PI2); ctx.stroke();
+  }
+}
+/* 外星人几何占位（图片缺失时） */
+function drawAlienFallback() {
+  ctx.fillStyle = 'rgba(61,255,162,0.9)';
+  ctx.beginPath(); ctx.ellipse(0, -4, 10, 8, 0, 0, PI2); ctx.fill();   // 椭圆头
+  ctx.fillStyle = '#0a0e1a';
+  ctx.beginPath(); ctx.arc(-4, -5, 2.2, 0, PI2); ctx.fill();           // 双眼
+  ctx.beginPath(); ctx.arc(4, -5, 2.2, 0, PI2); ctx.fill();
+  ctx.fillStyle = 'rgba(61,255,162,0.85)';
+  ctx.beginPath(); ctx.moveTo(-7, 4); ctx.lineTo(7, 4); ctx.lineTo(0, 16); ctx.closePath(); ctx.fill();   // 三角身
+}
+/* 大变幡（经幡）图标：旗杆 + 五色经幡条随风摆动；dimmed 时变暗 */
+function drawArtifactIcon(c, dimmed) {
+  if (!c) return;
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const t = S.time;
+  const px = c.width * 0.3, top = c.height * 0.12, bot = c.height * 0.92;
+  // 旗杆与横杆
+  c2.strokeStyle = '#9fb4c8';
+  c2.lineWidth = 2;
+  c2.beginPath(); c2.moveTo(px, bot); c2.lineTo(px, top); c2.stroke();
+  c2.beginPath(); c2.moveTo(px, top); c2.lineTo(c.width * 0.92, top); c2.stroke();
+  // 五色经幡条（蓝白红绿黄）
+  const colors = ['#4a90d9', '#f5f5f5', '#e5484d', '#3dffa2', '#ffe66d'];
+  const stripW = c.width * 0.115;
+  for (let i = 0; i < 5; i++) {
+    const x0 = px + i * stripW;
+    const sway = Math.sin(t * 2 + i * 0.7) * 2;
+    c2.fillStyle = colors[i];
+    c2.beginPath();
+    c2.moveTo(x0, top);
+    c2.lineTo(x0 + stripW * 0.9, top);
+    c2.lineTo(x0 + stripW * 0.7 + sway, bot);
+    c2.lineTo(x0 + sway * 0.4, bot);
+    c2.closePath();
+    c2.fill();
+  }
+  c2.restore();
+}
+/* 机翼图标（商店/背包皮肤展示）：style = classic / gold / silver，dimmed 变暗 */
+function drawWingIcon(c, style, dimmed) {
+  if (!c) return;
+  if (style === 'feather') { drawFeatherIcon(c, dimmed); return; }
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const cx = c.width / 2, cy = c.height / 2;
+  const col = style === 'gold' ? '#ffd76e' : (style === 'silver' ? '#d7e2ee' : '#00e5ff');
+  if (style === 'gold' || style === 'silver') {   // 发光晕染（商店/背包图标）
+    const glow = style === 'gold' ? 'rgba(255,215,110,0.85)' : 'rgba(215,226,238,0.8)';
+    const mid = style === 'gold' ? 'rgba(255,200,80,0.3)' : 'rgba(190,210,235,0.28)';
+    const rg = c2.createRadialGradient(cx, cy, 2, cx, cy, c.width * 0.5);
+    rg.addColorStop(0, glow);
+    rg.addColorStop(0.55, mid);
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    c2.fillStyle = rg;
+    c2.fillRect(0, 0, c.width, c.height);
+    // 内圈高亮光芯
+    const rg2 = c2.createRadialGradient(cx, cy, 1, cx, cy, c.width * 0.24);
+    rg2.addColorStop(0, 'rgba(255,255,255,0.5)');
+    rg2.addColorStop(1, 'rgba(0,0,0,0)');
+    c2.fillStyle = rg2;
+    c2.fillRect(0, 0, c.width, c.height);
+  }
+  for (const s of [-1, 1]) {
+    // 发光外圈
+    c2.fillStyle = col;
+    c2.globalAlpha = (dimmed ? 0.35 : 1) * 0.4;
+    c2.beginPath();
+    c2.moveTo(cx + s * 2, cy - 6);
+    c2.lineTo(cx + s * c.width * 0.44, cy + c.height * 0.34);
+    c2.lineTo(cx + s * 2, cy + c.height * 0.3);
+    c2.closePath();
+    c2.fill();
+    // 机翼主体
+    c2.globalAlpha = dimmed ? 0.35 : 1;
+    c2.beginPath();
+    c2.moveTo(cx + s * 2, cy - 8);
+    c2.lineTo(cx + s * c.width * 0.34, cy + c.height * 0.22);
+    c2.lineTo(cx + s * 3, cy + c.height * 0.18);
+    c2.closePath();
+    c2.fill();
+  }
+  c2.restore();
+}
+/* 羽翼图标（I can fly 皮肤展示）：一对纯白羽翼，羽毛密排 */
+function drawFeatherIcon(c, dimmed) {
+  if (!c) return;
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const cx = c.width / 2, cy = c.height / 2;
+  // 白色柔光
+  const wg = c2.createRadialGradient(cx, cy, 2, cx, cy, c.width * 0.48);
+  wg.addColorStop(0, 'rgba(255,255,255,0.35)');
+  wg.addColorStop(1, 'rgba(255,255,255,0)');
+  c2.fillStyle = wg;
+  c2.fillRect(0, 0, c.width, c.height);
+  // 一对羽翼：每侧 5 片渐细羽毛密排扇形展开
+  const N = 5;
+  for (const s of [-1, 1]) {
+    for (let i = N - 1; i >= 0; i--) {
+      const t = i / (N - 1);
+      const ang = s * (0.06 + t * 0.5);
+      const len = c.width * (0.18 + t * 0.17);
+      const w = 2 + t * 1.1;
+      c2.save();
+      c2.translate(cx + s * 2, cy + t * 3);
+      c2.rotate(ang);
+      const fg = c2.createLinearGradient(0, 0, s * len, 0);
+      fg.addColorStop(0, '#ffffff');
+      fg.addColorStop(1, '#c9d6e4');
+      c2.fillStyle = fg;
+      c2.beginPath();
+      c2.moveTo(s * len * 0.95, 0);
+      c2.quadraticCurveTo(s * len * 0.3, -w, 0, 0);
+      c2.quadraticCurveTo(s * len * 0.3, w, s * len * 0.95, 0);
+      c2.closePath();
+      c2.fill();
+      // 羽干
+      c2.strokeStyle = 'rgba(160,180,200,0.55)';
+      c2.lineWidth = 0.7;
+      c2.beginPath();
+      c2.moveTo(0, 0);
+      c2.lineTo(s * len * 0.88, 0);
+      c2.stroke();
+      c2.restore();
+    }
+  }
+  c2.restore();
+}
+/* 铜钱图标（八方来财）：八枚铜钱环绕中心铜钱 */
+function drawCoinsIcon(c, dimmed) {
+  if (!c) return;
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const cx = c.width / 2, cy = c.height / 2;
+  const shimmer = 0.75 + 0.25 * Math.sin(S.time * 3);
+  const coin = (x, y, r) => {
+    c2.fillStyle = '#ffd76e';
+    c2.beginPath(); c2.arc(x, y, r, 0, PI2); c2.fill();
+    c2.fillStyle = '#c9962e';
+    c2.fillRect(x - r * 0.28, y - 0.8, r * 0.56, 1.6);   // 方孔
+    c2.strokeStyle = '#e8b64c';
+    c2.lineWidth = 1.4;
+    c2.beginPath(); c2.arc(x, y, r - 1.2, 0, PI2); c2.stroke();
+  };
+  c2.globalAlpha = (dimmed ? 0.35 : 1) * shimmer;
+  for (let i = 0; i < 8; i++) {
+    const a = i * PI2 / 8 + S.time * 0.6;
+    coin(cx + Math.cos(a) * 14, cy + Math.sin(a) * 14, 5);
+  }
+  c2.globalAlpha = dimmed ? 0.35 : 1;
+  coin(cx, cy, 7);
+  c2.restore();
+}
+/* 错乱时空图标：时钟 + 紫色光晕 + 指针旋转 */
+function drawTimeFieldIcon(c, dimmed) {
+  if (!c) return;
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const cx = c.width / 2, cy = c.height / 2;
+  // 紫色光晕（脉动）
+  const pulse = 0.4 + 0.2 * Math.sin(S.time * 2.5);
+  const rg = c2.createRadialGradient(cx, cy, 2, cx, cy, c.width * 0.5);
+  rg.addColorStop(0, 'rgba(180,136,255,' + pulse.toFixed(3) + ')');
+  rg.addColorStop(1, 'rgba(180,136,255,0)');
+  c2.fillStyle = rg;
+  c2.fillRect(0, 0, c.width, c.height);
+  // 表盘
+  c2.strokeStyle = '#d9c4ff';
+  c2.lineWidth = 2;
+  c2.beginPath(); c2.arc(cx, cy, 13, 0, PI2); c2.stroke();
+  // 指针（旋转动画）
+  const ang = S.time * 1.5;
+  c2.strokeStyle = '#7cfffb';
+  c2.lineWidth = 1.8;
+  c2.lineCap = 'round';
+  c2.beginPath(); c2.moveTo(cx, cy); c2.lineTo(cx + Math.cos(ang) * 9, cy + Math.sin(ang) * 9); c2.stroke();
+  c2.beginPath(); c2.moveTo(cx, cy); c2.lineTo(cx - Math.cos(ang * 2.4) * 6, cy - Math.sin(ang * 2.4) * 6); c2.stroke();
+  // 中心点
+  c2.fillStyle = '#eaf6ff';
+  c2.beginPath(); c2.arc(cx, cy, 2, 0, PI2); c2.fill();
+  c2.restore();
+}
+/* 火力支援图标：主机两侧两个小僚机 + 光点 */
+function drawFireSupportIcon(c, dimmed) {
+  if (!c) return;
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const cx = c.width / 2, cy = c.height / 2;
+  // 青色光晕
+  const rg = c2.createRadialGradient(cx, cy, 2, cx, cy, c.width * 0.48);
+  rg.addColorStop(0, 'rgba(0,229,255,0.4)');
+  rg.addColorStop(1, 'rgba(0,229,255,0)');
+  c2.fillStyle = rg;
+  c2.fillRect(0, 0, c.width, c.height);
+  // 中间主机（小三角）
+  c2.fillStyle = '#7cfffb';
+  c2.beginPath(); c2.moveTo(cx, cy - 12); c2.lineTo(cx + 9, cy + 8); c2.lineTo(cx - 9, cy + 8); c2.closePath(); c2.fill();
+  // 左右僚机（小三角，偏下）
+  for (const s of [-1, 1]) {
+    const wx = cx + s * 14, wy = cy + 3;
+    c2.fillStyle = '#00e5ff';
+    c2.beginPath(); c2.moveTo(wx, wy - 8); c2.lineTo(wx + s * 5, wy + 4); c2.lineTo(wx - s * 5, wy + 4); c2.closePath(); c2.fill();
+  }
+  c2.restore();
+}
+/* 紧急维修图标：动态仿真实锤（金属锤头 + 木质锤柄，敲击摆动动画） */
+function drawRepairIcon(c, dimmed) {
+  if (!c) return;
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const cx = c.width / 2, cy = c.height / 2;
+  // 绿色光晕（脉动）
+  const pulse = 0.45 + 0.2 * Math.sin(S.time * 3);
+  const rg = c2.createRadialGradient(cx, cy, 2, cx, cy, c.width * 0.5);
+  rg.addColorStop(0, 'rgba(61,255,162,' + pulse.toFixed(3) + ')');
+  rg.addColorStop(1, 'rgba(61,255,162,0)');
+  c2.fillStyle = rg;
+  c2.fillRect(0, 0, c.width, c.height);
+  c2.translate(cx, cy);
+  // 动态：整锤摆动（像敲击前后晃动）
+  c2.rotate(Math.sin(S.time * 2.2) * 0.16 - 0.5);
+  // 锤柄（木色，圆角长柄，向下延伸）
+  c2.fillStyle = '#8b5a2b';
+  c2.beginPath();
+  c2.roundRect ? c2.roundRect(-2.6, -2, 5.2, 22, 2.2) : c2.rect(-2.6, -2, 5.2, 22);
+  c2.fill();
+  // 柄部高光 + 木纹
+  c2.strokeStyle = 'rgba(255,220,170,0.5)';
+  c2.lineWidth = 0.8;
+  c2.beginPath(); c2.moveTo(0.8, 0); c2.lineTo(0.8, 19); c2.stroke();
+  c2.strokeStyle = 'rgba(70,45,20,0.6)';
+  c2.lineWidth = 0.7;
+  c2.beginPath(); c2.moveTo(-1.2, 6); c2.lineTo(-1.2, 8); c2.stroke();
+  c2.beginPath(); c2.moveTo(0.2, 13); c2.lineTo(0.2, 15); c2.stroke();
+  // 锤头（金属：圆角矩形 + 两端锤面 + 高光）
+  const hg = c2.createLinearGradient(-14, 0, 14, 0);
+  hg.addColorStop(0, '#9fb0c0');
+  hg.addColorStop(0.5, '#e2eaf2');
+  hg.addColorStop(1, '#7e8fa0');
+  c2.fillStyle = hg;
+  c2.beginPath();
+  c2.roundRect ? c2.roundRect(-14, -12, 28, 11, 3) : c2.rect(-14, -12, 28, 11);
+  c2.fill();
+  // 锤头轮廓
+  c2.strokeStyle = 'rgba(60,75,90,0.8)';
+  c2.lineWidth = 1;
+  c2.stroke();
+  // 锤头高光条
+  c2.fillStyle = 'rgba(255,255,255,0.7)';
+  c2.fillRect(-10, -10.5, 20, 2);
+  // 两端锤面（稍深）
+  c2.fillStyle = 'rgba(70,85,100,0.55)';
+  c2.fillRect(-14, -11, 3.4, 9);
+  c2.fillRect(10.6, -11, 3.4, 9);
+  // 锤头与柄的连接铁箍
+  c2.fillStyle = '#5a6b7c';
+  c2.beginPath();
+  c2.roundRect ? c2.roundRect(-3.2, -3.4, 6.4, 4.6, 1.5) : c2.rect(-3.2, -3.4, 6.4, 4.6);
+  c2.fill();
+  c2.restore();
+}
+/* 聚宝盆图标：金盆 + 宝光 + 浮起的铜钱 */
+function drawBasinIcon(c, dimmed) {
+  if (!c) return;
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  c2.save();
+  if (dimmed) { c2.globalAlpha = 0.35; try { c2.filter = 'grayscale(0.8)'; } catch (e) {} }
+  const cx = c.width / 2, cy = c.height / 2;
+  // 宝光
+  const rg = c2.createRadialGradient(cx, cy - 6, 2, cx, cy - 6, 18);
+  rg.addColorStop(0, 'rgba(255,215,110,0.7)');
+  rg.addColorStop(1, 'rgba(255,215,110,0)');
+  c2.fillStyle = rg;
+  c2.fillRect(0, 0, c.width, c.height);
+  // 盆体（梯形碗）
+  const bg2 = c2.createLinearGradient(0, cy - 8, 0, cy + 14);
+  bg2.addColorStop(0, '#ffe08a');
+  bg2.addColorStop(1, '#c9962e');
+  c2.fillStyle = bg2;
+  c2.beginPath();
+  c2.moveTo(cx - 13, cy - 6);
+  c2.lineTo(cx + 13, cy - 6);
+  c2.lineTo(cx + 7, cy + 13);
+  c2.quadraticCurveTo(cx, cy + 16, cx - 7, cy + 13);
+  c2.closePath();
+  c2.fill();
+  c2.strokeStyle = '#e8b64c';
+  c2.lineWidth = 1.4;
+  c2.stroke();
+  // 浮起铜钱 ×2
+  const bob = Math.sin(S.time * 3) * 1.5;
+  c2.fillStyle = '#ffd76e';
+  c2.beginPath(); c2.arc(cx - 5, cy - 12 + bob, 3.2, 0, PI2); c2.fill();
+  c2.beginPath(); c2.arc(cx + 5, cy - 15 - bob, 3.2, 0, PI2); c2.fill();
+  c2.restore();
+}
+function updateBG(dt) {
+  S.gridOffset += CONFIG.effects.gridSpeed * dt;
+  for (const st of S.stars) { st.y += st.speed * dt; if (st.y > CONFIG.H + 4) { st.y = -4; st.x = rand(0, CONFIG.W); } }
+}
+/* 深空背景 + 动态透视网格 */
+function drawBG() {
+  ctx.fillStyle = CONFIG.colors.bg;
+  ctx.fillRect(0, 0, CONFIG.W, CONFIG.H);
+  // 星星
+  for (const st of S.stars) {
+    const a = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(S.time * 2 + st.tw));
+    ctx.globalAlpha = a;
+    ctx.fillStyle = st.c;
+    ctx.fillRect(st.x, st.y, st.r, st.r);
+  }
+  ctx.globalAlpha = 1;
+  // 透视网格（从屏幕上方往下移动）
+  const vpX = CONFIG.W / 2, vpY = -CONFIG.H * 0.25;   // 消失点
+  ctx.lineWidth = 1;
+  for (let i = -3; i <= 3; i++) {
+    ctx.strokeStyle = i === 0 ? 'rgba(180,136,255,0.20)' : 'rgba(0,229,255,0.10)';
+    ctx.beginPath();
+    ctx.moveTo(vpX, vpY);
+    ctx.lineTo(vpX + i * CONFIG.W * 0.34, CONFIG.H);
+    ctx.stroke();
+  }
+  const span = CONFIG.H * 1.25;
+  for (let i = 0; i < 12; i++) {
+    const t = ((i / 12) + S.gridOffset / span) % 1;
+    const y = t * t * CONFIG.H;
+    ctx.strokeStyle = `rgba(0,229,255,${(0.05 + t * 0.35).toFixed(3)})`;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CONFIG.W, y); ctx.stroke();
+  }
+  // 暗角
+  const vg = ctx.createRadialGradient(CONFIG.W / 2, CONFIG.H / 2, CONFIG.H * 0.45, CONFIG.W / 2, CONFIG.H / 2, CONFIG.H * 0.95);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,10,0.55)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, CONFIG.W, CONFIG.H);
+}
+/* 菜单装饰：旋转几何线框 */
+function drawMenuDeco() {
+  const t = S.time, cx = CONFIG.W / 2, cy = CONFIG.H * 0.42;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = 'rgba(180,136,255,0.28)'; ctx.lineWidth = 2;
+  polyPath(0, 0, 150, 6, t * 0.15); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,229,255,0.32)';
+  polyPath(0, 0, 105, 3, -t * 0.22); ctx.stroke();
+  ctx.strokeStyle = 'rgba(124,255,251,0.18)';
+  ctx.setLineDash([8, 14]);
+  ctx.lineDashOffset = -t * 45;
+  ctx.beginPath(); ctx.arc(0, 0, 190, 0, PI2); ctx.stroke();
+  ctx.setLineDash([]);
+  // 环绕光点
+  for (let i = 0; i < 3; i++) {
+    const a = t * 0.5 + i * PI2 / 3;
+    const px = Math.cos(a) * 150, py = Math.sin(a) * 150;
+    ctx.fillStyle = CONFIG.colors.cyan;
+    ctx.beginPath(); ctx.arc(px, py, 3.5, 0, PI2); ctx.fill();
+  }
+  ctx.restore();
+}
+/* 正多边形路径 */
+function polyPath(x, y, r, n, rot) {
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = rot + i * PI2 / n;
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+/* 追踪弹锁定目标标记：金色虚线菱形准星（实时标出被锁定的最近目标） */
+function drawTargetMarks() {
+  for (const t of S.targetMarks) {
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.strokeStyle = 'rgba(255,215,110,0.9)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(0, -8); ctx.lineTo(8, 0); ctx.lineTo(0, 8); ctx.lineTo(-8, 0);
+    ctx.closePath(); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+/* 火力支援僚机：主机左右偏下的小型僚机（渐显/渐隐透明度） */
+function drawWingmen() {
+  for (const w of S.wingmen) {
+    const wpx = S.player.x + w.side * CONFIG.fireSupport.wingmanOffset, wpy = S.player.y + CONFIG.fireSupport.wingmanDrop;   // 左右偏下跟随
+    w.x = wpx; w.y = wpy;
+    ctx.save();
+    ctx.globalAlpha = w.fade;
+    ctx.translate(wpx, wpy);
+    // 小型机身（主机缩小版三角）
+    glowPoly([[0, -11], [6, -4], [12, 7], [7, 12], [-7, 12], [-12, 7], [-6, -4]], 'rgba(0,229,255,0.12)', CONFIG.colors.neonBlue, 1.4, 3);
+    // 小尾焰
+    ctx.fillStyle = 'rgba(124,255,251,0.8)';
+    ctx.beginPath();
+    ctx.moveTo(-3, 12); ctx.lineTo(3, 12); ctx.lineTo(0, 18);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+/* 玩家英雄飞机 */
+function drawPlayer() {
+  if (S.playerDead) return;
+  const P = S.player, tr = S.transformT > 0;
+  const col = tr ? CONFIG.colors.red : CONFIG.colors.neonBlue;
+  const col2 = tr ? CONFIG.colors.redLight : CONFIG.colors.neonPurple;
+  // 无敌闪烁
+  if (S.invincibleT > 0 && Math.floor(S.time * 12) % 2 === 0) ctx.globalAlpha = 0.35;
+  ctx.save();
+  ctx.translate(P.x, P.y);
+  // 高空飞行状态（I can fly）：白色光环 + 上下浮动
+  if (S.highFlyT > 0) {
+    const ha = ctx.createRadialGradient(0, 0, 8, 0, 0, 46);
+    ha.addColorStop(0, 'rgba(255,255,255,0.4)');
+    ha.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = ha;
+    ctx.beginPath(); ctx.arc(0, 0, 46, 0, PI2); ctx.fill();
+    ctx.translate(0, Math.sin(S.time * 9) * 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = 'bold 11px "Courier New", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('高空飞行', 0, -46);
+  }
+  // 变身光环
+  if (tr) {
+    const ag = ctx.createRadialGradient(0, 0, 8, 0, 0, 52);
+    ag.addColorStop(0, 'rgba(255,59,92,0.30)');
+    ag.addColorStop(1, 'rgba(255,59,92,0)');
+    ctx.fillStyle = ag;
+    ctx.beginPath(); ctx.arc(0, 0, 52, 0, PI2); ctx.fill();
+  }
+  // 引擎尾焰（抖动三角）
+  const flame = 13 + Math.random() * 9;
+  const fg = ctx.createLinearGradient(0, 22, 0, 22 + flame + 8);
+  fg.addColorStop(0, tr ? '#fff3c4' : '#eaf6ff');
+  fg.addColorStop(0.4, col2);
+  fg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = fg;
+  ctx.beginPath();
+  ctx.moveTo(-5, 23); ctx.lineTo(5, 23); ctx.lineTo(0, 22 + flame + 8);
+  ctx.closePath(); ctx.fill();
+  // 机身（几何切割造型）
+  const body = [[0, -30], [9, -12], [22, 10], [15, 22], [-15, 22], [-22, 10], [-9, -12]];
+  glowPoly(body, 'rgba(5,8,20,0.9)', col, 2, 6);
+  // 机翼：按皮肤渲染（原皮肤霓虹蓝 / 黄金之翼 / 冷银之翼 / I can fly 羽毛）
+  const lw = [[-20, 8], [-40, 26], [-14, 21]];
+  const rw = [[20, 8], [40, 26], [14, 21]];
+  if (S.skin === 'feather') {
+    drawFeatherWings();
+  } else {
+    const isGold = S.skin === 'gold', isSilver = S.skin === 'silver';
+    const skinCol = isGold ? '#ffd76e' : (isSilver ? '#e8f0f8' : col);
+    if (isGold || isSilver) {
+      // 双层呼吸光晕（随时间脉动，与原皮区分明显）
+      const pulse = 0.6 + 0.3 * Math.sin(S.time * 5);
+      const outer = isGold ? `rgba(255,215,110,${pulse.toFixed(3)})` : `rgba(215,226,238,${pulse.toFixed(3)})`;
+      const mid = isGold ? 'rgba(255,200,80,0.25)' : 'rgba(190,210,235,0.22)';
+      const wg = ctx.createRadialGradient(0, 14, 4, 0, 14, 62);
+      wg.addColorStop(0, outer);
+      wg.addColorStop(0.5, mid);
+      wg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = wg;
+      ctx.beginPath(); ctx.arc(0, 14, 62, 0, PI2); ctx.fill();
+      // 内圈高亮光芯
+      const wg2 = ctx.createRadialGradient(0, 12, 2, 0, 12, 30);
+      wg2.addColorStop(0, 'rgba(255,255,255,0.55)');
+      wg2.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = wg2;
+      ctx.beginPath(); ctx.arc(0, 12, 30, 0, PI2); ctx.fill();
+    }
+    glowPoly(lw, 'rgba(10,12,28,0.9)', skinCol, (isGold || isSilver) ? 2.6 : 2, (isGold || isSilver) ? 10 : 0);
+    glowPoly(rw, 'rgba(10,12,28,0.9)', skinCol, (isGold || isSilver) ? 2.6 : 2, (isGold || isSilver) ? 10 : 0);
+  }
+  // 尾翼
+  glowPoly([[0, 24], [6, 36], [-6, 36]], 'rgba(10,12,28,0.9)', col2, 2, 0);
+  ctx.fillStyle = col2;
+  ctx.font = 'bold 13px "Courier New", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('飞', 0, 30);
+  // 机翼文字缩写
+  ctx.fillStyle = 'rgba(124,255,251,0.85)';
+  ctx.font = 'bold 8px "Courier New", monospace';
+  ctx.fillText('CN·飞', 0, 3);
+  // 座舱
+  ctx.strokeStyle = col2; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.ellipse(0, -2, 12, 16, 0, 0, PI2); ctx.stroke();
+  // 英雄人物：优先使用揽佬头像（圆形抠图），否则 Canvas 绘制抽象英雄
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, -2, 10.5, 0, PI2); ctx.clip();
+  if (S.avatar) {
+    ctx.drawImage(S.avatar, -11, -13, 22, 22);
+  } else {
+    drawAbstractHero();
+  }
+  ctx.restore();
+  // 座舱描边光圈
+  ctx.strokeStyle = col; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, -2, 10.5, 0, PI2); ctx.stroke();
+  // 受伤判定提示：中心机舱圆（虚线边界）+ 核心亮点
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = 'rgba(124,255,251,0.28)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, CONFIG.player.hitOffsetY, CONFIG.player.hitRadius, 0, PI2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(0, CONFIG.player.hitOffsetY, 2.6, 0, PI2); ctx.fill();
+  // 护盾
+  if (S.shields > 0) {
+    ctx.strokeStyle = 'rgba(124,255,251,0.85)';
+    ctx.lineWidth = 2;
+    polyPath(0, 0, 34, 6, S.time * 1.6);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(124,255,251,0.3)';
+    ctx.lineWidth = 5;
+    polyPath(0, 0, 34, 6, S.time * 1.6);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+/* I can fly 皮肤：纯白羽翼（每侧 6 片渐细羽毛密排成自然鸟翼形态；高空飞行时展开更大） */
+function drawFeatherWings() {
+  const spread = S.highFlyT > 0 ? 1.35 : 1;
+  const N = 6;   // 每侧羽毛数量
+  for (const s of [-1, 1]) {
+    // 由外向内绘制，内侧羽毛叠在翼根上方
+    for (let i = N - 1; i >= 0; i--) {
+      const t = i / (N - 1);                      // 0 内侧翼根 → 1 外侧翼尖
+      const ang = s * (0.05 + t * 0.62) * spread; // 扇形展开：内侧低、外侧高
+      const len = (15 + t * 25) * spread;         // 羽长：内侧短、外侧长
+      const w = (4.2 + t * 1.8) * spread;         // 羽片宽度随长度渐宽
+      ctx.save();
+      ctx.translate(s * 3, 12 + t * 4);
+      ctx.rotate(ang);
+      // 羽片（渐细柳叶形，尖端朝外）
+      const fg = ctx.createLinearGradient(0, 0, s * len, 0);
+      fg.addColorStop(0, '#ffffff');
+      fg.addColorStop(0.7, '#e8eef5');
+      fg.addColorStop(1, '#bcccdd');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.moveTo(s * len * 0.96, 0);
+      ctx.quadraticCurveTo(s * len * 0.3, -w, 0, 0);
+      ctx.quadraticCurveTo(s * len * 0.3, w, s * len * 0.96, 0);
+      ctx.closePath();
+      ctx.fill();
+      // 羽干
+      ctx.strokeStyle = 'rgba(150,172,196,0.55)';
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(s * len * 0.9, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // 白色柔光
+  const wg = ctx.createRadialGradient(0, 12, 4, 0, 12, 46);
+  wg.addColorStop(0, 'rgba(255,255,255,0.3)');
+  wg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = wg;
+  ctx.beginPath(); ctx.arc(0, 12, 46, 0, PI2); ctx.fill();
+}
+/* 抽象英雄（无头像时的备选）：鸭舌帽 + 墨镜 + 自信微笑 */
+function drawAbstractHero() {
+  // 脸部
+  ctx.fillStyle = '#ffd9c7';
+  ctx.beginPath(); ctx.arc(0, -1, 8.5, 0, PI2); ctx.fill();
+  // 鸭舌帽
+  ctx.fillStyle = CONFIG.colors.neonPurple;
+  ctx.beginPath(); ctx.arc(0, -4.5, 8.8, Math.PI, 0); ctx.fill();
+  ctx.fillRect(-9.5, -5.5, 19, 2.4);
+  ctx.fillStyle = CONFIG.colors.neonBlue;
+  ctx.fillRect(4, -6, 7.5, 2.2);
+  // 墨镜
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(-7.5, -2.6, 6.4, 3.4);
+  ctx.fillRect(1.1, -2.6, 6.4, 3.4);
+  ctx.fillRect(-1.1, -1.4, 2.2, 0.9);
+  // 自信微笑
+  ctx.strokeStyle = '#3a1d0e'; ctx.lineWidth = 1.1;
+  ctx.beginPath(); ctx.arc(0, 3.4, 3.6, 0.25 * Math.PI, 0.75 * Math.PI); ctx.stroke();
+}
+/* 发光多边形描边（外圈粗+透明发光，内圈细+高亮） */
+function glowPoly(pts, fill, stroke, lw, glowW) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill();
+  if (glowW > 0) { ctx.strokeStyle = stroke; ctx.globalAlpha *= 0.35; ctx.lineWidth = glowW; ctx.stroke(); ctx.globalAlpha = Math.min(1, ctx.globalAlpha / 0.35); }
+  ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke();
+}
+
+/* 敌机绘制（全几何抽象） */
+function drawEnemy(e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  const hpFrac = e.maxHp > 1 ? e.hp / e.maxHp : 1;
+  switch (e.type) {
+    case 'dart': {   // 蓝色三角
+      glowPoly([[0, 16], [-15, -10], [0, -4], [15, -10]], 'rgba(0,229,255,0.10)', CONFIG.colors.neonBlue, 1.6, 4);
+      break;
+    }
+    case 'elite': {  // 紫色六边形 + 内旋三角 + 血环
+      glowPoly(sixAngles(e.rot).map(a => [Math.cos(a) * 22, Math.sin(a) * 22]), 'rgba(180,136,255,0.12)', CONFIG.colors.neonPurple, 2, 5);
+      polyPath(0, 0, 12, 3, -e.rot * 1.8);
+      ctx.strokeStyle = CONFIG.colors.cyan; ctx.lineWidth = 1.4; ctx.stroke();
+      if (hpFrac < 1) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 27, -Math.PI / 2, -Math.PI / 2 + PI2 * hpFrac); ctx.stroke();
+      }
+      break;
+    }
+    case 'speeder': { // 青色小三角（横向）
+      glowPoly([[12, 0], [-8, -10], [-3, 0], [-8, 10]], 'rgba(61,255,162,0.10)', CONFIG.colors.green, 1.4, 3.5);
+      break;
+    }
+    case 'switcher': { // 橙色菱形（切换航道闪烁）
+      const blink = e.tween > 0 && Math.floor(e.t * 20) % 2 === 0;
+      glowPoly([[0, -16], [16, 0], [0, 16], [-16, 0]], 'rgba(255,159,67,0.10)', blink ? CONFIG.colors.white : CONFIG.colors.orange, 1.6, 4);
+      polyPath(0, 0, 7, 4, e.t * 2);
+      ctx.strokeStyle = CONFIG.colors.yellow; ctx.lineWidth = 1.2; ctx.stroke();
+      break;
+    }
+    case 'goldplane': { // 每日彩蛋·金飞机：金色三角 + 旋转内三角 + 双层脉动光环
+      // 双层脉动光环
+      const pulse = 0.5 + 0.25 * Math.sin(S.time * 4);
+      ctx.strokeStyle = `rgba(255,215,110,${pulse.toFixed(3)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, 26, 0, PI2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,215,110,0.3)';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(0, 0, 32 + Math.sin(S.time * 4) * 3, 0, PI2); ctx.stroke();
+      // 金色三角机体 + 旋转内三角
+      glowPoly([[0, 22], [-18, -14], [0, -6], [18, -14]], 'rgba(255,215,110,0.15)', '#ffd76e', 2, 6);
+      polyPath(0, 0, 12, 3, S.time * 2);
+      ctx.strokeStyle = CONFIG.colors.white; ctx.lineWidth = 1.3; ctx.stroke();
+      // 中心「金」字
+      ctx.fillStyle = '#ffd76e';
+      ctx.font = 'bold 10px "Courier New", monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('金', 0, 1);
+      // 血环（受损时）
+      if (hpFrac < 1) {
+        ctx.strokeStyle = 'rgba(255,215,110,0.8)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 27, -Math.PI / 2, -Math.PI / 2 + PI2 * hpFrac); ctx.stroke();
+      }
+      break;
+    }
+  }
+  // 受击闪白
+  if (e.flash > 0) {
+    ctx.globalAlpha = Math.min(1, e.flash * 8);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0, 0, e.r + 2, 0, PI2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+const sixAngles = rot => [0, 1, 2, 3, 4, 5].map(i => rot + i * PI2 / 6);
+
+/* Boss 绘制：多层旋转三角形/六边形几何核心 */
+function drawBoss(b) {
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  const fast = b.phase === 2;
+  const rot = b.t * (fast ? 2.2 : 1.2);
+  const alpha = b.enterT;
+  ctx.globalAlpha = alpha;
+  // 外层六边形
+  ctx.fillStyle = 'rgba(180,136,255,0.12)';
+  polyPath(0, 0, 74, 6, rot); ctx.fill();
+  ctx.strokeStyle = 'rgba(180,136,255,0.9)'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.strokeStyle = 'rgba(180,136,255,0.25)'; ctx.lineWidth = 9; ctx.stroke();
+  // 中层三角形（反向旋转）
+  ctx.strokeStyle = 'rgba(0,229,255,0.85)'; ctx.lineWidth = 2.4;
+  polyPath(0, 0, 48, 3, -rot * 1.6); ctx.stroke();
+  // 内层菱形（高速旋转）
+  ctx.strokeStyle = 'rgba(124,255,251,0.7)'; ctx.lineWidth = 1.6;
+  polyPath(0, 0, 30, 4, rot * 2); ctx.stroke();
+  // 发光核心
+  const pulse = 0.75 + 0.25 * Math.sin(S.time * 6);
+  const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
+  cg.addColorStop(0, `rgba(255,255,255,${0.95 * pulse})`);
+  cg.addColorStop(0.4, fast ? 'rgba(255,59,92,0.85)' : 'rgba(0,229,255,0.8)');
+  cg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = cg;
+  ctx.beginPath(); ctx.arc(0, 0, 22, 0, PI2); ctx.fill();
+  // 环绕卫星
+  for (let i = 0; i < 4; i++) {
+    const a = rot * 0.8 + i * PI2 / 4;
+    const px = Math.cos(a) * 92, py = Math.sin(a) * 92;
+    ctx.fillStyle = fast ? CONFIG.colors.redLight : CONFIG.colors.cyan;
+    ctx.save(); ctx.translate(px, py); ctx.rotate(a);
+    polyPath(0, 0, 6, 4, 0); ctx.fill();
+    ctx.restore();
+  }
+  // 受击闪白
+  if (b.flash > 0) {
+    ctx.globalAlpha = Math.min(0.8, b.flash * 5);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0, 0, 76, 0, PI2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* 旋转激光障碍 */
+function drawLaser(l) {
+  const active = laserActive(l);
+  const fade = clamp(l.life / 1.2, 0, 1);
+  ctx.save();
+  ctx.globalAlpha = fade;
+  ctx.translate(l.x, l.y);
+  // 发射器
+  ctx.fillStyle = '#0a0e1a';
+  ctx.beginPath(); ctx.arc(0, 0, 11, 0, PI2); ctx.fill();
+  ctx.strokeStyle = active ? CONFIG.colors.red : CONFIG.colors.yellow;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, 11, 0, PI2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, PI2); ctx.stroke();
+  // 光束（双臂）
+  for (const s of [1, -1]) {
+    const ex = Math.cos(l.angle) * l.arm * s, ey = Math.sin(l.angle) * l.arm * s;
+    if (active) {
+      const lg = ctx.createLinearGradient(0, 0, ex, ey);
+      lg.addColorStop(0, 'rgba(255,255,255,0.95)');
+      lg.addColorStop(1, 'rgba(255,59,92,0.15)');
+      ctx.strokeStyle = lg; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,59,92,0.3)'; ctx.lineWidth = 11;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.fillStyle = CONFIG.colors.red;
+      ctx.beginPath(); ctx.arc(ex, ey, 4, 0, PI2); ctx.fill();
+    } else {
+      // 预览虚线（预告旋转轨迹）
+      ctx.strokeStyle = 'rgba(255,230,109,0.35)'; ctx.lineWidth = 1.4;
+      ctx.setLineDash([6, 8]);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(255,230,109,0.25)';
+      ctx.beginPath(); ctx.arc(0, 0, l.arm, 0, PI2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+/* 道具绘制 */
+function drawPowerup(p) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(Math.sin(p.t * 3) * 0.25);
+  const bob = Math.sin(p.t * 4) * 3;
+  ctx.translate(0, bob);
+  switch (p.type) {
+    case 'bomb':     // 六边形 + B
+      polyPath(0, 0, 13, 6, 0);
+      ctx.fillStyle = 'rgba(255,230,109,0.15)'; ctx.fill();
+      ctx.strokeStyle = CONFIG.colors.yellow; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = CONFIG.colors.yellow;
+      ctx.font = 'bold 13px "Courier New", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('B', 0, 1);
+      break;
+    case 'shield':   // 圆环 + 内六边形
+      ctx.strokeStyle = CONFIG.colors.cyan; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(0, 0, 12, 0, PI2); ctx.stroke();
+      polyPath(0, 0, 7, 6, p.t);
+      ctx.strokeStyle = 'rgba(124,255,251,0.7)'; ctx.lineWidth = 1.3; ctx.stroke();
+      break;
+    case 'redpacket': { // 红包（圆角矩形 + 福）
+      const rp = (x, y, w, h, r) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      };
+      rp(-11, -13, 22, 26, 4);
+      ctx.fillStyle = 'rgba(255,59,92,0.9)'; ctx.fill();
+      ctx.strokeStyle = '#ffd76e'; ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.fillStyle = '#ffd76e';
+      ctx.font = 'bold 13px "Courier New", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('福', 0, 1);
+      break;
+    }
+    case 'transform': { // 紫色四芒星 + 变
+      ctx.rotate(p.t);
+      ctx.fillStyle = 'rgba(180,136,255,0.95)';
+      ctx.beginPath();
+      ctx.moveTo(0, -16); ctx.lineTo(4, -4); ctx.lineTo(16, 0); ctx.lineTo(4, 4);
+      ctx.lineTo(0, 16); ctx.lineTo(-4, 4); ctx.lineTo(-16, 0); ctx.lineTo(-4, -4);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = CONFIG.colors.white; ctx.lineWidth = 1.2; ctx.stroke();
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+/* 粒子绘制 */
+function drawParticles() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of S.particles) {
+    const a = clamp(p.life * 3, 0, 1);
+    ctx.globalAlpha = a;
+    if (p.type === 'shard') {
+      ctx.save();
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.moveTo(p.size, 0); ctx.lineTo(-p.size / 2, -p.size / 2); ctx.lineTo(-p.size / 2, p.size / 2);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    } else if (p.type === 'spark') {
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, PI2); ctx.fill();
+    } else if (p.type === 'ring') {
+      ctx.strokeStyle = p.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, PI2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+/* 玩家子弹 / 敌弹 */
+function drawBullet(b, isPlayer) {
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  if (isPlayer) {
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.moveTo(0, -b.r * 1.8); ctx.lineTo(b.r * 0.8, b.r); ctx.lineTo(-b.r * 0.8, b.r);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath(); ctx.arc(0, 0, b.r * 1.6, 0, PI2); ctx.fill();
+  } else {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = b.color;
+    ctx.beginPath(); ctx.arc(0, 0, b.r, 0, PI2); ctx.fill();
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath(); ctx.arc(0, 0, b.r * 2, 0, PI2); ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+/* 飘字 */
+function drawPopups() {
+  ctx.save();
+  ctx.font = 'bold 15px "Courier New", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const p of S.popups) {
+    ctx.globalAlpha = clamp(p.t * 2.5, 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+/* 时空错乱特效：紫色色罩 + 错乱扫描条 + 时间涟漪（时空静止期间） */
+function drawTimeFieldFx() {
+  if (S.timeStopT <= 0) return;
+  // 全屏时空扭曲色罩
+  ctx.fillStyle = 'rgba(124,80,255,0.06)';
+  ctx.fillRect(0, 0, CONFIG.W, CONFIG.H);
+  // 错乱扫描条
+  for (let i = 0; i < 4; i++) {
+    const y = rand(0, CONFIG.H - 20), h = rand(6, 20);
+    ctx.fillStyle = Math.random() < 0.5 ? 'rgba(0,229,255,0.05)' : 'rgba(180,136,255,0.07)';
+    ctx.fillRect(0, y, CONFIG.W, h);
+  }
+  // 时间涟漪
+  if (Math.random() < 0.35) S.particles.push({ type: 'ring', x: rand(0, CONFIG.W), y: rand(0, CONFIG.H), r: 6, vr: 55, life: 0.8, color: Math.random() < 0.5 ? '#00e5ff' : '#b388ff' });
+}
+/* 世界总绘制 */
+function drawWorld() {
+  if (S.timeStopT > 0) drawTimeFieldFx();   // 时空错乱特效（背景层之上）
+  const inGame = ['playing', 'paused', 'winAnim', 'loseAnim'].includes(S.state);
+  if (inGame) {
+    drawWingmen();   // 火力支援僚机
+    for (const a of S.aliens) drawAlienPair(a);   // MV 外星人障碍
+    for (const l of S.lasers) drawLaser(l);
+    for (const p of S.powerups) drawPowerup(p);
+    for (const e of S.enemies) drawEnemy(e);
+    drawTargetMarks();   // 追踪弹锁定标记（实时最近目标）
+    if (S.boss && !S.boss.dying) drawBoss(S.boss);
+    for (const b of S.pBullets) drawBullet(b, true);
+    for (const b of S.eBullets) drawBullet(b, false);
+    drawPlayer();
+  }
+  drawParticles();
+  drawPopups();
+  // Boss 警告横幅
+  if (S.warnT > 0 && Math.floor(S.time * 8) % 2 === 0) {
+    ctx.save();
+    ctx.font = 'bold 34px "Courier New", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = CONFIG.colors.red;
+    ctx.shadowColor = CONFIG.colors.red; ctx.shadowBlur = 22;
+    ctx.fillText('⚠ WARNING ⚠', CONFIG.W / 2, 90);
+    ctx.restore();
+  }
+  // 关卡开场横幅
+  if (S.banner) {
+    ctx.save();
+    ctx.globalAlpha = clamp(S.banner.t * 2.5, 0, 1);
+    ctx.font = 'bold 26px "Courier New", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = CONFIG.colors.cyan;
+    ctx.shadowColor = CONFIG.colors.cyan; ctx.shadowBlur = 16;
+    ctx.fillText(S.banner.text, CONFIG.W / 2, 110);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+  // 炸弹白闪
+  if (S.flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${clamp(S.flash, 0, 0.55).toFixed(3)})`;
+    ctx.fillRect(0, 0, CONFIG.W, CONFIG.H);
+  }
+  // 故障抖动色条
+  if (S.glitch && S.glitch.t > 0) {
+    const g = S.glitch, k = cv.width / CONFIG.W;   // 源坐标需换算为设备像素
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(cv, 0, g.y * k, CONFIG.W * k, g.h * k, g.dx, g.y, CONFIG.W, g.h);
+    ctx.restore();
+  }
+}
+
+/* ==================== 11. UI 界面管理 ==================== */
+/* ---------- 指引 / 关卡介绍的预览绘制 ---------- */
+/* 敌机图鉴数据（名称 / 攻击方式，用于指引与关卡介绍） */
+const ENEMY_META = {
+  dart:     { name: '三角机',     atk: '直线下落，偶尔发射直线子弹' },
+  elite:    { name: '精英六边形', atk: '悬停空中，发射 5 发扇形弹幕' },
+  speeder:  { name: '快速机',     atk: '从屏幕边缘高速横穿' },
+  switcher: { name: '菱形机',     atk: '下落中切换航道，偶尔射击' },
+  goldplane: { name: '金飞机',    atk: '今日彩蛋 · 慢速巡游，击落得分数与红包' },
+};
+/* 临时切换绘制目标到指定小画布，复用现有绘制函数 */
+function onMiniCanvas(c, fn) {
+  const c2 = c.getContext('2d');
+  c2.setTransform(1, 0, 0, 1, 0, 0);
+  c2.clearRect(0, 0, c.width, c.height);
+  const mainCtx = ctx;
+  ctx = c2;
+  fn();
+  ctx = mainCtx;
+}
+/* 指引界面：动态绘制道具图标 */
+function drawGuideIcons() {
+  onMiniCanvas($('gi-bomb'),      () => drawPowerup({ type: 'bomb', x: 22, y: 22, t: S.time }));
+  onMiniCanvas($('gi-shield'),    () => drawPowerup({ type: 'shield', x: 22, y: 22, t: S.time }));
+  onMiniCanvas($('gi-redpacket'), () => drawPowerup({ type: 'redpacket', x: 22, y: 22, t: S.time }));
+  onMiniCanvas($('gi-transform'), () => drawPowerup({ type: 'transform', x: 22, y: 22, t: S.time }));
+}
+/* 关卡介绍：敌机 / 外星人 / 激光 / Boss 预览（随帧刷新动画） */
+function renderIntroPreviews() {
+  const box = $('intro-cards');
+  if (!box) return;
+  const isEndless = S.mode === 'endless';
+  const types = isEndless ? ['dart', 'switcher', 'elite', 'speeder'] : Object.keys(S.levelCfg.types);
+  const cans = box.querySelectorAll('canvas');
+  cans.forEach((c, i) => {
+    if (i < types.length) {
+      const type = types[i], D = CONFIG.enemies[type];
+      const e = { type, x: c.width / 2, y: c.height / 2, hp: D.hp, maxHp: D.hp, r: Math.min(D.r, c.width / 2 - 8), t: S.time, rot: S.time, flash: 0 };
+      onMiniCanvas(c, () => drawEnemy(e));
+    } else if (isEndless && i === types.length) {
+      // 外星人障碍预览（缓慢旋转）
+      onMiniCanvas(c, () => drawAlienPair({ x: c.width / 2, y: c.height / 2, rot: S.time * 0.7 }));
+    } else if (isEndless && i === types.length + 1) {
+      const b = { x: c.width / 2, y: c.height / 2, t: S.time, phase: 1, enterT: 1, flash: 0 };
+      onMiniCanvas(c, () => drawBoss(b));
+    } else if (!isEndless && S.level === 1 && i === types.length) {
+      // 第 1 关：金飞机彩蛋预览
+      const e = { type: 'goldplane', x: c.width / 2, y: c.height / 2, hp: 40, maxHp: 40, r: 20, t: S.time, flash: 0, speed: 0, wave: 0, x0: c.width / 2 };
+      onMiniCanvas(c, () => drawEnemy(e));
+    } else if (!isEndless && S.level === 3 && i === types.length) {
+      const l = { x: c.width / 2, y: c.height / 2, angle: S.time * 0.5, cycleT: 0, arm: c.width / 2 - 14, life: 2 };
+      onMiniCanvas(c, () => drawLaser(l));
+    } else if (!isEndless && S.level === 3 && i === types.length + 1) {
+      const b = { x: c.width / 2, y: c.height / 2, t: S.time, phase: 1, enterT: 1, flash: 0 };
+      onMiniCanvas(c, () => drawBoss(b));
+    }
+  });
+}
+/* 关卡 / 无尽模式介绍界面：展示敌机（含 Boss）样子、攻击方式与分值 */
+function showIntro() {
+  const isEndless = S.mode === 'endless';
+  const L = S.levelCfg;
+  S.state = 'intro';
+  $('intro-title').textContent = isEndless ? '无尽模式 · 敌机图鉴' : L.name;
+  // 本局生效装备确认表（仅展示；聚宝盆仅无尽模式生效，其余模式不显示）
+  {
+    const parts = [];
+    if (S.artifactUsed) parts.push('大变幡');
+    if (S.eightUsed) parts.push('八方来财');
+    if (S.mode === 'endless' && S.basinActive) parts.push('聚宝盆');
+    if (S.repairActive) parts.push('紧急维修');
+    if (S.fireSupportUsed) parts.push('火力支援');
+    if (S.timeFieldUsed) parts.push('错乱时空');
+    const skinNames = { classic: '原皮肤', gold: '黄金之翼', silver: '冷银之翼', feather: 'I can fly' };
+    // 关卡模式逐关展示 → 用「本关生效」；无尽模式无关卡概念 → 用「本局生效」
+    const gearLabel = isEndless ? '本局生效' : '本关生效';
+    $('intro-gear').textContent = '🎒 ' + gearLabel + '：' + (parts.length ? parts.join(' · ') : '无装备') + ' ｜ 皮肤：' + (skinNames[S.skin] || '原皮肤');
+  }
+  // 今日彩蛋状态条（准备界面提示）：未出现/已出现未击落/已拿下 三态
+  {
+    checkGoldDay();   // 跨天惰性重置
+    const goldEl = $('intro-gold');
+    if (S.goldShown) {
+      goldEl.textContent = S.goldFirst ? '✅ 今日彩蛋：金飞机已拿下，明日再来！' : '🏁 今日彩蛋：金飞机已出现（今日不再有），明日再来！';
+      goldEl.className = 'gold-bar gold-done';
+    } else {
+      goldEl.textContent = '🎁 今日彩蛋：金飞机待击落 —— 每天仅 1 架随机出现，首拾 +' + CONFIG.gold.firstBonus + ' 🧧';
+      goldEl.className = 'gold-bar';
+    }
+  }
+  $('btn-begin').textContent = isEndless ? '✔ 了解，开始无尽挑战' : '✔ 了解，开始本关';
+  const box = $('intro-cards');
+  box.innerHTML = '';
+  const types = isEndless ? ['dart', 'switcher', 'elite', 'speeder'] : Object.keys(L.types);
+  for (const type of types) {
+    const D = CONFIG.enemies[type];
+    const card = document.createElement('div');
+    card.className = 'intro-card';
+    card.innerHTML = `
+      <canvas width="56" height="56"></canvas>
+      <div class="ic-info">
+        <div class="ic-name">${ENEMY_META[type].name}<span class="ic-score">${D.score} 分</span></div>
+        <div class="ic-desc">HP ${D.hp} · ${ENEMY_META[type].atk}</div>
+      </div>`;
+    box.appendChild(card);
+  }
+  if (isEndless) {
+    // 无尽模式：MV 外星人障碍 + Boss
+    const alienCard = document.createElement('div');
+    alienCard.className = 'intro-card';
+    alienCard.innerHTML = `
+      <canvas width="90" height="90"></canvas>
+      <div class="ic-info">
+        <div class="ic-name">MV里的外星人<span class="ic-score">障碍</span></div>
+        <div class="ic-desc">从屏幕边缘任意位置刷新 · 双外星人绕心旋转 · 沿直线运动，速度与旋转越来越快</div>
+      </div>`;
+    box.appendChild(alienCard);
+    const bossCard = document.createElement('div');
+    bossCard.className = 'intro-card boss';
+    bossCard.innerHTML = `
+      <canvas width="190" height="190"></canvas>
+      <div class="ic-info" style="text-align:center">
+        <div class="ic-name">BOSS · 几何核心<span class="ic-score">${CONFIG.boss.score} 分</span></div>
+        <div class="ic-desc">HP ${CONFIG.boss.hp} · 每 20 秒刷新 · 一阶段：环形弹幕 + 瞄准弹；血量低于 50% 暴走：加速旋转 + 双环弹幕 + 追踪弹</div>
+      </div>`;
+    box.appendChild(bossCard);
+  } else if (S.level === 1) {
+    // 第一关追加：每日彩蛋·金飞机卡片
+    const goldCard = document.createElement('div');
+    goldCard.className = 'intro-card';
+    goldCard.innerHTML = `
+      <canvas width="56" height="56"></canvas>
+      <div class="ic-info">
+        <div class="ic-name">金飞机 · 今日彩蛋<span class="ic-score">${CONFIG.enemies.goldplane.score} 分</span></div>
+        <div class="ic-desc">HP ${CONFIG.enemies.goldplane.hp} · 每天 1 架随机出现，击落得分数与红包（当天首次 +${CONFIG.gold.firstBonus} 🧧）</div>
+      </div>`;
+    box.appendChild(goldCard);
+  } else if (S.level === 3) {
+    // 第三关追加：旋转激光障碍 + Boss
+    const laserCard = document.createElement('div');
+    laserCard.className = 'intro-card';
+    laserCard.innerHTML = `
+      <canvas width="56" height="56"></canvas>
+      <div class="ic-info">
+        <div class="ic-name">旋转激光<span class="ic-score">障碍</span></div>
+        <div class="ic-desc">光束先虚线预告、后激活，被扫中受伤</div>
+      </div>`;
+    box.appendChild(laserCard);
+    const bossCard = document.createElement('div');
+    bossCard.className = 'intro-card boss';
+    bossCard.innerHTML = `
+      <canvas width="190" height="190"></canvas>
+      <div class="ic-info" style="text-align:center">
+        <div class="ic-name">BOSS · 几何核心<span class="ic-score">${CONFIG.boss.score} 分</span></div>
+        <div class="ic-desc">HP ${CONFIG.boss.hp} · 一阶段：环形弹幕 + 瞄准弹；血量低于 50% 暴走：加速旋转 + 双环弹幕 + 追踪弹</div>
+      </div>`;
+    box.appendChild(bossCard);
+  }
+  renderIntroPreviews();
+  showScreen('scr-intro');
+}
+/* 点击“了解”后正式进入关卡 / 无尽挑战 */
+function beginLevel() {
+  S.state = 'playing';
+  S.banner = { text: S.levelCfg.name, t: 1.6 };
+  hideAllScreens();
+  $('hud').classList.add('show');
+  // 聚宝盆生效提示（无尽模式）
+  if (S.mode === 'endless' && S.basinActive) popup(CONFIG.W / 2, 200, '聚宝盆生效：红包掉率 88%！', CONFIG.colors.yellow);
+  // 紧急维修生效提示（关卡/无尽通用，确认已就位）
+  if (S.repairActive) popup(CONFIG.W / 2, 230, '紧急维修已就位', CONFIG.colors.green);
+  // 每日彩蛋提示（当天金飞机已出现过则不再提示）
+  if (!S.goldSpawned && !S.goldShown) popup(CONFIG.W / 2, 260, '今日彩蛋：金飞机即将出现，击落得红包！', '#ffd76e');
+}
+function hideAllScreens() {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('show'));
+}
+function showScreen(id) {
+  hideAllScreens();
+  $(id).classList.add('show');
+}
+
+function updateHUD() {
+  $('hud-score').textContent = S.score;
+  $('hud-level').textContent = S.mode === 'endless' ? '∞' : S.level;
+  $('hud-rp').textContent = S.redPacketsRun;
+  $('hud-bomb').textContent = S.bombs;
+  $('hud-shield-n').textContent = S.shields;
+  $('hud-shield').classList.toggle('on', S.shields > 0);
+  // 聚宝盆生效指示
+  $('hud-basin').style.display = (S.mode === 'endless' && S.basinActive) ? '' : 'none';
+  // 无尽模式：显示存活时间
+  const timeEl = $('hud-time-item');
+  if (S.mode === 'endless') {
+    timeEl.style.display = '';
+    const m = Math.floor(S.endlessT / 60), s = Math.floor(S.endlessT % 60);
+    $('hud-time').textContent = m + ':' + String(s).padStart(2, '0');
+  } else {
+    timeEl.style.display = 'none';
+  }
+  // 我方血条（分段生命条：关卡 3 格 / 无尽 5 格，最后一格时红色警示）
+  const hpEl = $('hud-hp');
+  let html = '';
+  const low = S.lives === 1;
+  for (let i = 0; i < S.maxLives; i++) html += `<span class="hp-seg ${i < S.lives ? 'on' : ''} ${i < S.lives && low ? 'low' : ''}"></span>`;
+  hpEl.innerHTML = html;
+  // 变身倒计时
+  const tb = $('transform-bar');
+  tb.classList.toggle('show', S.transformT > 0);
+  if (S.transformT > 0) $('transform-fill').style.width = (S.transformT / CONFIG.powerups.transformDuration * 100) + '%';
+  // 火力支援技能图标（圆形技能：生效中/冷却/就绪三态）
+  updateSkillUI();
+  // 时空静止状态条（剩余时间进度）
+  const tfBar = $('timefield-bar');
+  if (S.timeStopT > 0) {
+    tfBar.classList.add('show');
+    $('timefield-fill').style.width = (S.timeStopT / CONFIG.timeField.duration * 100) + '%';
+  } else {
+    tfBar.classList.remove('show');
+  }
+  // 高空飞行状态条（剩余时间进度）
+  const hfBar = $('highfly-bar');
+  if (S.highFlyT > 0) {
+    hfBar.classList.add('show');
+    $('highfly-fill').style.width = (S.highFlyT / CONFIG.highFly.duration * 100) + '%';
+  } else {
+    hfBar.classList.remove('show');
+  }
+  // Boss 血条
+  if (S.boss && !S.boss.dying) {
+    $('bossbar').classList.add('show');
+    $('bossbar-fill').style.width = (S.boss.hp / S.boss.maxHp * 100) + '%';
+  } else if (S.state !== 'winAnim') {
+    $('bossbar').classList.remove('show');
+  }
+}
+function updateMenuStats() {
+  $('menu-rp').textContent = S.totalRP;
+  $('menu-high').textContent = S.highScore;
+  $('menu-high-endless').textContent = S.highEndless;
+  // 飞行日志
+  $('menu-games').textContent = S.totalGames;
+  $('menu-kills').textContent = S.totalKills;
+  // 段位（条件化判定，详情点击右侧「查看段位详情」按钮）
+  const info = rankInfo();
+  $('menu-rank-line').textContent = info.next
+    ? `🏅 段位：${CONFIG.ranks[info.cur].name} · 下一段位：${info.next.name}`
+    : `🏅 段位：${CONFIG.ranks[info.cur].name}（已达最高段位）`;
+  // 昨日对比（无尽）
+  checkDayRollover();
+  $('menu-daily-line').textContent = `📅 无尽 · 今日 ${S.dailyBest} / 昨日 ${S.dailyPrev > 0 ? S.dailyPrev : '——'}`;
+}
+/* ---------- 段位图鉴界面 ---------- */
+const RANK_MEDALS = ['🛠', '🎖', '⭐', '🌟', '👑', '🚀'];
+function renderRankUI() {
+  const info = rankInfo();
+  const cur = CONFIG.ranks[info.cur];
+  $('rank-cur-name').textContent = cur.name;
+  if (info.next) {
+    $('rank-next-name').textContent = info.next.name;
+    $('rank-score-fill').style.width = (info.scoreProgress * 100).toFixed(1) + '%';
+    const scoreNeed = info.next.min;
+    $('rank-score-text').textContent = `无尽最高分 ${S.highEndless} / ${scoreNeed}（${info.scoreProgress >= 1 ? '✓ 分数达标' : '还差 ' + (scoreNeed - S.highEndless) + ' 分'}）`;
+    $('rank-task-label').style.display = info.next.task ? '' : 'none';
+    $('rank-task-fill').style.width = (info.taskProgress * 100).toFixed(1) + '%';
+    $('rank-task-text').textContent = info.next.task ? `晋级任务：${info.next.task}（${info.taskProgress >= 1 ? '✓ 已完成' : '未完成，见下方图鉴当前进度'}）` : '';
+  } else {
+    $('rank-next-name').textContent = '已达最高段位';
+    $('rank-score-fill').style.width = '100%';
+    $('rank-score-text').textContent = `无尽最高分 ${S.highEndless}，已达最高段位！`;
+    $('rank-task-label').style.display = 'none';
+    $('rank-task-fill').style.width = '100%';
+    $('rank-task-text').textContent = '';
+  }
+  // 段位图鉴列表（6 档要求解释 + 达标状态）
+  const list = $('rank-list');
+  list.innerHTML = '';
+  CONFIG.ranks.forEach((r, i) => {
+    const elig = rankEligible(i);
+    const scoreOk = S.highEndless >= r.min;
+    const isCur = i === info.cur;
+    const isNext = info.next && i === info.cur + 1;
+    const card = document.createElement('div');
+    card.className = 'rank-card' + (isCur ? ' cur' : '') + (isNext ? ' next-t' : '');
+    let req = `无尽最高分 ≥ ${r.min}`;
+    if (r.task) req += ' ｜ ' + r.task;
+    let st;
+    if (i === 0) st = '初始';
+    else if (isCur) st = '✓ 当前';
+    else if (elig) st = '✓ 已达成';
+    else st = scoreOk ? '任务未完成' : '分数未达标';
+    card.innerHTML = `
+      <div class="rank-medal">${RANK_MEDALS[i]}</div>
+      <div class="rc-info">
+        <div class="rc-t">${r.name}${isNext ? '（下一目标）' : ''}</div>
+        <div class="rc-req">${req}</div>
+      </div>
+      <div class="rc-st ${isCur || elig ? '' : 'pending'}">${st}</div>`;
+    list.appendChild(card);
+  });
+}
+function openRank() {
+  S.state = 'rank';
+  renderRankUI();
+  showScreen('scr-rank');
+}
+function closeRank() {
+  S.state = 'menu';
+  updateMenuStats();
+  showScreen('scr-menu');
+}
+
+/* 开始游戏（首次显示指引，可跳过；随后进入模式选择） */
+function startGame() {
+  if (!S.seenGuide) {
+    S.seenGuide = true;
+    storeSet(CONFIG.storage.seenGuide, true);
+    showScreen('scr-guide');
+    S.state = 'guide';
+    return;
+  }
+  openModeSelect();
+}
+function openGuide() {
+  showScreen('scr-guide');
+  S.state = 'guide';
+}
+/* 开始 / 重新开始一局 */
+function startRun() {
+  S.mode = 'level';
+  S.state = 'intro';   // 先展示本关介绍界面，点击“了解”后正式进入关卡
+  S.totalGames++; storeSet(CONFIG.storage.logGames, S.totalGames);   // 飞行日志：进入挑战即算一局
+  const gp = getGoldParams(); S.goldSpawned = false; S.goldAt = gp.offset; S.goldLane = gp.lane;   // 每日彩蛋参数（当天固定）
+  S.rankStart = currentRankIndex();   // 记录本局开局段位（结算晋升判定用）
+  S.score = 0; S.maxLives = CONFIG.player.lives; S.lives = S.maxLives; S.level = 1; S.deaths = 0;
+  S.bombs = 0; S.shields = 0;
+  S.redPacketsRun = 0; S.levelRP = 0;
+  S.transformT = 0; S.transformDropped = 0;
+  S.invincibleT = 0; S.firing = false;
+  S.enemies = []; S.pBullets = []; S.eBullets = []; S.powerups = []; S.particles = []; S.lasers = []; S.popups = []; S.aliens = [];
+  S.boss = null; S.bossSpawned = false; S.bossCount = 0;
+  S.levelCfg = CONFIG.levels[0];
+  S.player.x = CONFIG.W / 2; S.player.y = CONFIG.H - 80;
+  S.playerDead = false;
+  S.levelTime = 0; S.spawnTimer = 1; S.endlessT = 0;
+  S.laserIdx = 0;   // 激光刷新序号重置
+  S.highFlyT = 0; S.highFlyTimer = 10;   // 高空飞行状态重置
+  S.timeStopT = 0; S.timeStopTimer = CONFIG.timeField.interval;   // 错乱时空状态重置
+  S.warnT = 0; S.flash = 0; S.shake = null; S.glitch = null;
+  S.dragId = null; S.dragTarget = null;
+  S.banner = null;
+  S.newEndlessRecord = false;
+  S.levelScoreStart = 0;   // 本关开始时的累计分（结算本关得分用）
+  AudioSys.setBGMRate(1);
+  AudioSys.playBGM(CONFIG.levels[0].bgm);
+  showIntro();
+  $('hud').classList.remove('show');
+  $('bossbar').classList.remove('show');
+}
+/* 无尽模式开局：5 格血槽，敌机循环，Boss/外星人定时刷新 */
+function startEndless() {
+  S.mode = 'endless';
+  S.state = 'intro';
+  S.totalGames++; storeSet(CONFIG.storage.logGames, S.totalGames);   // 飞行日志：进入挑战即算一局
+  const gp = getGoldParams(); S.goldSpawned = false; S.goldAt = gp.offset; S.goldLane = gp.lane;   // 每日彩蛋参数（当天固定）
+  S.rankStart = currentRankIndex();   // 记录本局开局段位（结算晋升判定用）
+  S.score = 0; S.maxLives = CONFIG.endless.lives; S.lives = S.maxLives;
+  S.level = 0; S.deaths = 0;
+  S.bombs = 0; S.shields = 0;
+  S.redPacketsRun = 0; S.levelRP = 0;
+  S.transformT = 0; S.transformDropped = 0;
+  S.invincibleT = 0; S.firing = false;
+  S.enemies = []; S.pBullets = []; S.eBullets = []; S.powerups = []; S.particles = []; S.lasers = []; S.popups = []; S.aliens = [];
+  S.boss = null; S.bossSpawned = false; S.bossCount = 0;
+  S.levelCfg = { name: '无尽模式', lanes: 5, dur: 60, spawnInterval: CONFIG.endless.spawnInterval, enemySpeed: [160, 280], types: { dart: 1 }, fireChance: 0.9, bgm: 'menu' };
+  S.player.x = CONFIG.W / 2; S.player.y = CONFIG.H - 80;
+  S.playerDead = false;
+  S.endlessT = 0; S.bossTimer = CONFIG.endless.bossEvery; S.alienTimer = CONFIG.endless.alienEvery;
+  S.levelTime = 0; S.spawnTimer = 0.6;
+  S.highFlyT = 0; S.highFlyTimer = 10;   // 高空飞行状态重置
+  S.timeStopT = 0; S.timeStopTimer = CONFIG.timeField.interval;   // 错乱时空状态重置
+  S.warnT = 0; S.flash = 0; S.shake = null; S.glitch = null;
+  S.dragId = null; S.dragTarget = null;
+  S.banner = null;
+  S.newEndlessRecord = false;
+  S.levelScoreStart = 0;
+  AudioSys.setBGMRate(1);
+  AudioSys.playBGM('menu');   // 无尽模式 BGM 与开始界面保持一致
+  showIntro();
+  $('hud').classList.remove('show');
+  $('bossbar').classList.remove('show');
+}
+/* 按当前模式重开一局（暂停 / 结算界面使用）：重开视为本次挑战结束，聚宝盆/紧急维修失效 */
+function restartCurrent() {
+  consumeBasin();
+  consumeRepair();
+  commitLogStats();   // 飞行日志落盘（任意退出路径）
+  if (S.mode === 'endless') startEndless();
+  else startRun();
+}
+/* 模式选择界面 */
+function openModeSelect() {
+  S.state = 'modeSelect';
+  showScreen('scr-mode');
+}
+/* 下一关（或最终胜利画面） */
+function nextLevel() {
+  if (S.level >= 3) { showVictory(); return; }
+  S.level++;
+  S.state = 'intro';   // 先展示本关介绍界面，点击“了解”后正式进入关卡
+  S.levelTime = 0; S.spawnTimer = 0.8;
+  S.laserIdx = 0;   // 激光刷新序号重置
+  S.levelRP = 0;    // 本关红包计数重置（结算“本关红包”只显示本关获得数）
+  S.transformT = 0; S.transformDropped = 0;
+  S.enemies = []; S.pBullets = []; S.eBullets = []; S.powerups = []; S.lasers = []; S.popups = []; S.aliens = [];
+  S.boss = null; S.bossSpawned = false; S.bossCount = 0;
+  S.levelCfg = CONFIG.levels[S.level - 1];
+  S.player.x = CONFIG.W / 2; S.player.y = CONFIG.H - 80;
+  S.playerDead = false;
+  S.invincibleT = 1;
+  S.highFlyT = 0; S.highFlyTimer = 10;   // 高空飞行状态重置
+  S.warnT = 0; S.flash = 0; S.shake = null; S.glitch = null;
+  S.dragId = null; S.dragTarget = null;
+  S.banner = null;
+  S.levelScoreStart = S.score;   // 本关开始时的累计分（结算本关得分用）
+  AudioSys.setBGMRate(1);
+  AudioSys.playBGM(CONFIG.levels[S.level - 1].bgm);
+  showIntro();
+  $('hud').classList.remove('show');
+  $('bossbar').classList.remove('show');
+}
+/* 过关结算界面（注意：关卡间的通关过渡不是挑战结束，紧急维修跨关继续生效） */
+function showClearScreen() {
+  S.state = 'clearScreen';
+  AudioSys.play('victory');   // 统一过关结算音效
+  // 段位条件记录：历史已通关第 2 / 3 关
+  if (S.level >= 2 && !S.clearedL2) { S.clearedL2 = 1; storeSet(CONFIG.storage.clearedL2, 1); }
+  if (S.level >= 3 && !S.clearedL3) { S.clearedL3 = 1; storeSet(CONFIG.storage.clearedL3, 1); }
+  const L = S.levelCfg;
+  const bonus = 1000 * S.level + S.lives * 500;
+  S.score += bonus;
+  const rating = S.lives === 3 ? 'S' : S.lives === 2 ? 'A' : 'B';
+  const ratingCls = { S: 's', A: 'a', B: 'b' }[rating];
+  $('clear-title').textContent = `${L.name} 通关！`;
+  $('clear-level-score').textContent = (S.score - S.levelScoreStart);
+  $('clear-total-score').textContent = S.score;
+  $('clear-rating').textContent = rating;
+  $('clear-rating').className = 'rating ' + ratingCls;
+  $('clear-rp').textContent = '+' + S.levelRP;
+  $('btn-next').textContent = S.level >= 3 ? '🏆 查看总成绩' : '下一关 ▶';
+  showScreen('scr-clear');
+  $('hud').classList.remove('show');
+  $('bossbar').classList.remove('show');
+  $('transform-bar').classList.remove('show');
+  $('highfly-bar').classList.remove('show');
+  $('timefield-bar').classList.remove('show');
+}
+/* 游戏结束界面（无尽模式：以阵亡前分数为评分，记录无尽最高分） */
+function showGameOver() {
+  consumeRepair();   // 阵亡视为本次挑战结束：紧急维修失效（需重新装备）
+  S.state = 'gameover';
+  AudioSys.play('defeat');   // 统一失败结算音效
+  $('over-basin-row').style.display = 'none';   // 默认隐藏聚宝盆行（仅无尽模式按需显示）
+  $('over-rank-row').style.display = 'none';    // 默认隐藏段位晋升行
+  $('over-daily-row').style.display = 'none';   // 默认隐藏今日/昨日行
+  if (S.mode === 'endless') {
+    // 聚宝盆（一次性）：本次无尽结束失效
+    const hadBasin = !!S.basinActive;
+    consumeBasin();
+    if (hadBasin) $('over-basin-row').style.display = '';
+    if (S.score > S.highEndless) {
+      S.highEndless = S.score;
+      storeSet(CONFIG.storage.highEndless, S.highEndless);
+      S.newEndlessRecord = true;
+    }
+    // 昨日对比：跨天归档后更新今日最高
+    checkDayRollover();
+    if (S.score > S.dailyBest) { S.dailyBest = S.score; storeSet(CONFIG.storage.dailyBest, S.dailyBest); }
+    $('over-daily-row').style.display = '';
+    $('over-daily').textContent = S.dailyBest + ' / ' + (S.dailyPrev > 0 ? S.dailyPrev : '——');
+    $('over-title').textContent = '无尽模式 · 游戏结束';
+    $('over-score-label').textContent = '本次评分';
+    $('over-score').textContent = S.score;
+    $('over-best-label').textContent = '无尽最高分';
+    $('over-best').textContent = S.highEndless + (S.newEndlessRecord ? ' 🏆新纪录!' : '');
+  } else {
+    if (S.score > S.highScore) { S.highScore = S.score; storeSet(CONFIG.storage.highScore, S.highScore); }
+    $('over-title').textContent = '游戏结束';
+    $('over-score-label').textContent = '最终得分';
+    $('over-score').textContent = S.score;
+    $('over-best-label').textContent = '历史最高';
+    $('over-best').textContent = S.highScore;
+  }
+  // 段位晋升提示（段位为条件化判定，以本局开局时的段位快照比较）
+  const upIdx = currentRankIndex();
+  if (upIdx > S.rankStart) { $('over-rank-row').style.display = ''; $('over-rank').textContent = '🏅 晋升 ' + CONFIG.ranks[upIdx].name + '！'; }
+  $('over-rp').textContent = S.redPacketsRun;
+  showScreen('scr-over');
+  $('hud').classList.remove('show');
+  $('bossbar').classList.remove('show');
+  $('transform-bar').classList.remove('show');
+  $('highfly-bar').classList.remove('show');
+  $('timefield-bar').classList.remove('show');
+}
+/* 最终胜利界面（全部通关 = 本次挑战结束：紧急维修失效，需重新装备） */
+function showVictory() {
+  consumeRepair();
+  S.state = 'victory';
+  $('vic-rank-row').style.display = 'none';
+  if (S.score > S.highScore) { S.highScore = S.score; storeSet(CONFIG.storage.highScore, S.highScore); }
+  // 段位条件记录：三关无伤通关（本局全程未受击 deaths===0）
+  if (S.deaths === 0) { S.perfectClears++; storeSet(CONFIG.storage.perfectClears, S.perfectClears); }
+  // 段位晋升提示（段位为条件化判定，以本局开局时的段位快照比较）
+  const upIdx = currentRankIndex();
+  if (upIdx > S.rankStart) { $('vic-rank-row').style.display = ''; $('vic-rank').textContent = '🏅 晋升 ' + CONFIG.ranks[upIdx].name + '！'; }
+  // 八方来财（永久）：全部通关结算红包 +8（本局红包行显示为“总数(+8)”表明经过加成）
+  let eightBonus = 0;
+  if (S.eightUsed) {
+    eightBonus = 8;
+    S.redPacketsRun += eightBonus;
+    S.totalRP += eightBonus;
+    storeSet(CONFIG.storage.redPackets, S.totalRP);
+  }
+  const rating = S.deaths === 0 ? 'S' : S.deaths === 1 ? 'A' : S.deaths === 2 ? 'B' : 'C';
+  const ratingCls = { S: 's', A: 'a', B: 'b', C: 'c' }[rating];
+  $('vic-score').textContent = S.score;
+  $('vic-rating').textContent = rating;
+  $('vic-rating').className = 'rating ' + ratingCls;
+  $('vic-rp').textContent = eightBonus ? S.redPacketsRun + '(+' + eightBonus + ')' : S.redPacketsRun;
+  $('vic-total-rp').textContent = S.totalRP;
+  $('vic-best').textContent = S.highScore;
+  showScreen('scr-victory');
+  $('hud').classList.remove('show');
+  $('bossbar').classList.remove('show');
+  $('transform-bar').classList.remove('show');
+  $('highfly-bar').classList.remove('show');
+  $('timefield-bar').classList.remove('show');
+}
+/* 暂停 / 继续 */
+function togglePause() {
+  if (S.state === 'playing') {
+    S.state = 'paused';
+    S.dragId = null; S.dragTarget = null;   // 暂停时清除拖拽状态，防止恢复后卡住
+    AudioSys.pauseBGM();
+    $('pause-rp').textContent = '🎒 本局红包：' + S.redPacketsRun;   // 暂停界面显示本局红包收集情况
+    showScreen('scr-pause');
+  } else if (S.state === 'paused') {
+    S.state = 'playing';
+    AudioSys.resumeBGM();
+    hideAllScreens();
+    $('hud').classList.add('show');
+  }
+}
+/* ---------- 商店 / 背包通用系统（分类：装备 / 皮肤，条目动态生成） ---------- */
+const ITEM_KEYS = ['banner', 'eight', 'basin', 'repair', 'firesupport', 'timefield', 'gold', 'silver', 'feather'];
+/* 读取/累加物品持有数（delta 传入时同步持久化） */
+function itemOwnCount(key, delta) {
+  const map = {
+    banner: 'artifactOwn', eight: 'eightOwn', basin: 'basinCount', repair: 'repairCount', firesupport: 'fireSupportOwn', timefield: 'timeFieldOwn',
+    gold: 'skinOwn', silver: 'silverOwn', feather: 'featherOwn',
+  };
+  const field = map[key];
+  if (delta) { S[field] += delta; storeSet(CONFIG.storage[field], S[field]); }
+  return S[field];
+}
+function addCat(box, label) {
+  const d = document.createElement('div');
+  d.className = 'cat-label';
+  d.textContent = '── ' + label + ' ──';
+  box.appendChild(d);
+}
+/* 商店条目 */
+function addShopItem(box, key) {
+  const cfg = CONFIG.artifacts[key];
+  const d = document.createElement('div');
+  d.className = 'shop-item';
+  d.innerHTML = `
+    <canvas id="si-${key}" width="48" height="48"></canvas>
+    <div class="si-info">
+      <div class="si-name">${cfg.name}<span class="si-status" id="status-${key}"></span></div>
+      <div class="si-desc">${cfg.desc}</div>
+    </div>
+    <div class="si-right">
+      <div class="si-price" id="price-${key}"></div>
+      <button class="btn" data-action="buy-${key}" id="btn-buy-${key}">购买</button>
+      <span class="si-own" id="own-${key}"></span>
+    </div>`;
+  box.appendChild(d);
+}
+/* 背包条目（装备条目含“卸下”按钮，皮肤条目不含） */
+function addBackpackItem(box, key, name, desc, withUnequip) {
+  const d = document.createElement('div');
+  d.className = 'shop-item';
+  d.innerHTML = `
+    <canvas id="bp-${key}" width="48" height="48"></canvas>
+    <div class="si-info">
+      <div class="si-name">${name}<span class="si-status" id="bp-status-${key}"></span></div>
+      <div class="si-desc">${desc}</div>
+    </div>
+    <div class="si-right">
+      <div class="si-btns">
+        <button class="btn" data-action="use-${key}" id="btn-use-${key}">使用</button>
+        ${withUnequip ? `<button class="btn" data-action="unequip-${key}" id="btn-unequip-${key}">卸下</button>` : ''}
+      </div>
+      <span class="si-own" id="bp-own-${key}"></span>
+    </div>`;
+  box.appendChild(d);
+}
+/* 构建商店 / 背包条目（初始化时各执行一次） */
+function buildShopUI() {
+  const box = $('shop-items');
+  box.innerHTML = '';
+  addCat(box, '装备');
+  addShopItem(box, 'banner'); addShopItem(box, 'eight'); addShopItem(box, 'basin'); addShopItem(box, 'repair');
+  addCat(box, '技能');
+  addShopItem(box, 'firesupport');
+  addCat(box, '领域');
+  addShopItem(box, 'timefield');
+  addCat(box, '皮肤');
+  addShopItem(box, 'gold'); addShopItem(box, 'silver'); addShopItem(box, 'feather');
+}
+function buildBackpackUI() {
+  const box = $('backpack-items');
+  box.innerHTML = '';
+  addCat(box, '装备');
+  addBackpackItem(box, 'banner', '大变幡（永久）', CONFIG.artifacts.banner.desc, true);
+  addBackpackItem(box, 'eight', '八方来财（永久）', CONFIG.artifacts.eight.desc, true);
+  addBackpackItem(box, 'basin', '聚宝盆（一次性）', CONFIG.artifacts.basin.desc, true);
+  addBackpackItem(box, 'repair', '紧急维修（一次性）', CONFIG.artifacts.repair.desc, true);
+  addCat(box, '技能');
+  addBackpackItem(box, 'firesupport', '火力支援（永久）', CONFIG.artifacts.firesupport.desc, true);
+  addCat(box, '领域');
+  addBackpackItem(box, 'timefield', '领域（永久）：错乱时空', CONFIG.artifacts.timefield.desc, true);
+  addCat(box, '皮肤');
+  addBackpackItem(box, 'classic', '原皮肤 · 经典霓虹蓝翼', '默认机翼涂装（可随时换回）', false);
+  addBackpackItem(box, 'gold', '黄金之翼', CONFIG.artifacts.gold.desc, false);
+  addBackpackItem(box, 'silver', '冷银之翼', CONFIG.artifacts.silver.desc, false);
+  addBackpackItem(box, 'feather', 'I can fly', CONFIG.artifacts.feather.desc, false);
+}
+
+/* 商店/背包图标逐帧渲染（购买达上限或已使用 → 图标变暗） */
+function renderShopIcons() {
+  drawArtifactIcon($('si-banner'), S.artifactOwn >= 1);
+  drawCoinsIcon($('si-eight'), S.eightOwn >= 1);
+  drawBasinIcon($('si-basin'), false);
+  drawRepairIcon($('si-repair'), false);
+  drawFireSupportIcon($('si-firesupport'), S.fireSupportOwn >= 1);
+  drawTimeFieldIcon($('si-timefield'), S.timeFieldOwn >= 1);
+  drawWingIcon($('si-gold'), 'gold', S.skinOwn >= 1);
+  drawWingIcon($('si-silver'), 'silver', S.silverOwn >= 1);
+  drawWingIcon($('si-feather'), 'feather', S.featherOwn >= 1);
+}
+function renderBackpackIcons() {
+  drawArtifactIcon($('bp-banner'), S.artifactOwn >= 1 && S.artifactUsed);
+  drawCoinsIcon($('bp-eight'), S.eightOwn >= 1 && S.eightUsed);
+  drawBasinIcon($('bp-basin'), false);
+  drawRepairIcon($('bp-repair'), false);
+  drawFireSupportIcon($('bp-firesupport'), S.fireSupportOwn >= 1 && S.fireSupportUsed);
+  drawTimeFieldIcon($('bp-timefield'), S.timeFieldOwn >= 1 && S.timeFieldUsed);
+  drawWingIcon($('bp-classic'), 'classic', false);
+  drawWingIcon($('bp-gold'), 'gold', false);
+  drawWingIcon($('bp-silver'), 'silver', false);
+  drawWingIcon($('bp-feather'), 'feather', false);
+}
+
+/* 商店：打开 */
+function openShop() {
+  S.state = 'shop';
+  updateShopUI();
+  showScreen('scr-shop');
+}
+function closeShop() {
+  S.state = 'menu';
+  updateMenuStats();
+  showScreen('scr-menu');
+}
+/* 商店界面刷新：余额 / 购买状态 / 图标变暗（达购买上限，图标由循环按状态渲染） */
+function updateShopUI() {
+  $('shop-rp').textContent = S.totalRP;
+  for (const key of ITEM_KEYS) {
+    const cfg = CONFIG.artifacts[key];
+    const own = itemOwnCount(key);
+    const priceEl = $('price-' + key), ownEl = $('own-' + key), btn = $('btn-buy-' + key), st = $('status-' + key);
+    if (priceEl) priceEl.textContent = '🧧 ' + cfg.price;
+    if (ownEl) ownEl.textContent = cfg.maxBuy > 0 ? own + '/' + cfg.maxBuy : '×' + own;
+    if (btn) {
+      const capped = cfg.maxBuy > 0 && own >= cfg.maxBuy;
+      const locked = (key === 'feather' && !S.featherOwn && currentRankIndex() < 2)          // I can fly 段位锁（中尉）
+        || (key === 'firesupport' && !S.fireSupportOwn && currentRankIndex() < 3)            // 火力支援段位锁（上尉）
+        || (key === 'timefield' && !S.timeFieldOwn && currentRankIndex() < 4);               // 错乱时空段位锁（王牌机长）
+      btn.disabled = capped || locked;
+      const lockTxt = key === 'feather' ? '🔒 需中尉' : (key === 'firesupport' ? '🔒 需上尉' : '🔒 需王牌');
+      btn.textContent = capped ? '已购' : (locked ? lockTxt : '购买');
+    }
+    if (st) {
+      st.textContent = '';
+      st.className = 'si-status';
+      if ((key === 'banner' && S.artifactUsed) || (key === 'eight' && S.eightUsed) || (key === 'firesupport' && S.fireSupportUsed) || (key === 'timefield' && S.timeFieldUsed)) { st.textContent = '已使用'; st.className = 'si-status used'; }
+      if ((key === 'basin' && S.basinActive) || (key === 'repair' && S.repairActive)) st.textContent = '生效中';
+      if (S.skin === key) st.textContent = '已装备';
+      if (key === 'feather' && !S.featherOwn && currentRankIndex() < 2) { st.textContent = '🔒 需中尉及以上'; st.className = 'si-status used'; }
+      if (key === 'firesupport' && !S.fireSupportOwn && currentRankIndex() < 3) { st.textContent = '🔒 需上尉及以上'; st.className = 'si-status used'; }
+      if (key === 'timefield' && !S.timeFieldOwn && currentRankIndex() < 4) { st.textContent = '🔒 需王牌机长及以上'; st.className = 'si-status used'; }
+    }
+  }
+}
+/* 商店提示条 */
+function shopMsg(text, color) {
+  const el = $('shop-msg');
+  el.textContent = text;
+  el.style.color = color || '#ff8fa3';
+  clearTimeout(shopMsg.t);
+  shopMsg.t = setTimeout(() => { el.textContent = ''; }, 2200);
+}
+/* 通用购买：扣除红包、计入持有数、达上限禁用（聚宝盆可重复购买） */
+function buyItem(key) {
+  const cfg = CONFIG.artifacts[key];
+  if (cfg.maxBuy > 0 && itemOwnCount(key) >= cfg.maxBuy) return;
+  // 段位限制：I can fly 需中尉及以上（rank ≥ 2）；火力支援需上尉及以上（rank ≥ 3）
+  if (key === 'feather' && currentRankIndex() < 2) {
+    AudioSys.play('click');
+    shopMsg('🔒 I can fly 需要 中尉 及以上段位才能购买（当前段位：' + CONFIG.ranks[currentRankIndex()].name + '）');
+    return;
+  }
+  if (key === 'firesupport' && currentRankIndex() < 3) {
+    AudioSys.play('click');
+    shopMsg('🔒 火力支援 需要 上尉 及以上段位才能购买（当前段位：' + CONFIG.ranks[currentRankIndex()].name + '）');
+    return;
+  }
+  if (key === 'timefield' && currentRankIndex() < 4) {
+    AudioSys.play('click');
+    shopMsg('🔒 错乱时空 需要 王牌机长 及以上段位才能购买（当前段位：' + CONFIG.ranks[currentRankIndex()].name + '）');
+    return;
+  }
+  if (S.totalRP < cfg.price) {
+    AudioSys.play('click');   // 购买失败反馈音
+    shopMsg('🧧 红包不足，还需要 ' + (cfg.price - S.totalRP) + ' 个');
+    return;
+  }
+  S.totalRP -= cfg.price;
+  storeSet(CONFIG.storage.redPackets, S.totalRP);
+  itemOwnCount(key, 1);
+  // 购买音效：皮肤 click；紧急维修 大展宏图；其余装备 来财音效
+  const buySfx = { gold: 'click', silver: 'click', feather: 'click', repair: 'transform', firesupport: 'transform', timefield: 'transform', banner: 'redPacket', eight: 'redPacket', basin: 'redPacket' };
+  AudioSys.play(buySfx[key] || 'click');
+  shopMsg('✅ 已购入' + cfg.name + '！可前往背包查看', '#3dffa2');
+  updateShopUI();
+  updateMenuStats();
+}
+/* 背包：查看与使用已购法具 */
+function openBackpack() {
+  S.state = 'backpack';
+  updateBackpackUI();
+  showScreen('scr-backpack');
+}
+function closeBackpack() {
+  S.state = 'menu';
+  updateMenuStats();
+  showScreen('scr-menu');
+}
+/* 背包界面刷新：拥有状态 / 使用按钮（图标由循环按状态渲染） */
+function updateBackpackUI() {
+  // 装备区
+  const equips = [
+    { key: 'banner', own: S.artifactOwn, used: !!S.artifactUsed },
+    { key: 'eight', own: S.eightOwn, used: !!S.eightUsed },
+    { key: 'basin', own: S.basinCount, used: false },
+    { key: 'repair', own: S.repairCount, used: false },
+    { key: 'firesupport', own: S.fireSupportOwn, used: !!S.fireSupportUsed },
+    { key: 'timefield', own: S.timeFieldOwn, used: !!S.timeFieldUsed },
+  ];
+  for (const it of equips) {
+    const ownEl = $('bp-own-' + it.key), btn = $('btn-use-' + it.key), st = $('bp-status-' + it.key);
+    if (ownEl) ownEl.textContent = (it.key === 'basin' || it.key === 'repair') ? '×' + it.own : (it.own >= 1 ? '1/1' : '0/1');
+    if (st) {
+      if (it.key === 'basin') {
+        st.textContent = S.basinActive ? '生效中' : (it.own > 0 ? '可使用' : '未拥有');
+        st.className = 'si-status';
+      } else if (it.key === 'repair') {
+        st.textContent = S.repairActive ? '生效中' : (it.own > 0 ? '可使用' : '未拥有');
+        st.className = 'si-status';
+      } else {
+        st.textContent = it.used ? '已使用' : (it.own >= 1 ? '可使用' : '未拥有');
+        st.className = 'si-status' + (it.used ? ' used' : '');
+      }
+    }
+    if (btn) {
+      let disabled, label;
+      if (it.key === 'basin') { disabled = it.own <= 0 || S.basinActive; label = S.basinActive ? '生效中' : '使用'; }
+      else if (it.key === 'repair') { disabled = it.own <= 0 || S.repairActive; label = S.repairActive ? '生效中' : '使用'; }
+      else { disabled = !(it.own >= 1) || it.used; label = it.used ? '已使用' : '使用'; }
+      btn.disabled = disabled;
+      btn.textContent = label;
+    }
+    // “卸下”按钮：已使用/生效中时可卸下（一次性道具卸下返还持有数）
+    const unBtn = $('btn-unequip-' + it.key);
+    if (unBtn) {
+      const active = it.key === 'basin' ? S.basinActive : (it.key === 'repair' ? S.repairActive : (it.key === 'banner' ? !!S.artifactUsed : !!S.eightUsed));
+      unBtn.disabled = !active;
+      unBtn.textContent = active ? '卸下' : '——';
+    }
+  }
+  // 皮肤区（原皮肤始终保留，可随时换回）
+  const skins = [
+    { key: 'classic', own: 1, equipped: S.skin === 'classic' },
+    { key: 'gold', own: S.skinOwn, equipped: S.skin === 'gold' },
+    { key: 'silver', own: S.silverOwn, equipped: S.skin === 'silver' },
+    { key: 'feather', own: S.featherOwn, equipped: S.skin === 'feather' },
+  ];
+  for (const sk of skins) {
+    const ownEl = $('bp-own-' + sk.key), btn = $('btn-use-' + sk.key), st = $('bp-status-' + sk.key);
+    if (ownEl) ownEl.textContent = sk.key === 'classic' ? '——' : (sk.own >= 1 ? '1/1' : '0/1');
+    if (st) {
+      st.textContent = !sk.own ? '未拥有' : (sk.equipped ? '使用中' : (sk.key === 'classic' ? '可换回' : '可使用'));
+      st.className = 'si-status' + (!sk.own ? ' used' : '');
+    }
+    if (btn) {
+      btn.disabled = !sk.own || sk.equipped;
+      btn.textContent = sk.equipped ? '使用中' : '使用';
+    }
+  }
+}
+/* 使用装备（banner 大变幡 / eight 八方来财 / basin 聚宝盆一次性） */
+function useEquip(key) {
+  const el = $('bp-msg');
+  if (key === 'banner') {
+    if (!S.artifactOwn || S.artifactUsed) { AudioSys.play('click'); return; }
+    S.artifactUsed = 1;
+    storeSet(CONFIG.storage.artifactUsed, 1);
+    el.textContent = '✅ 大变幡已使用：无尽模式「变身」掉落概率 5% → 10%（永久生效）';
+  } else if (key === 'eight') {
+    if (!S.eightOwn || S.eightUsed) { AudioSys.play('click'); return; }
+    S.eightUsed = 1;
+    storeSet(CONFIG.storage.eightUsed, 1);
+    el.textContent = '✅ 八方来财已使用：关卡模式全部通关结算红包 +8（永久生效）';
+  } else if (key === 'basin') {
+    if (S.basinCount <= 0) { AudioSys.play('click'); el.textContent = '未拥有聚宝盆，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    if (S.basinActive) { AudioSys.play('click'); el.textContent = '聚宝盆已生效中，将在下一次无尽模式结算时耗尽'; el.style.color = '#ff8fa3'; return; }
+    S.basinCount -= 1;
+    storeSet(CONFIG.storage.basinCount, S.basinCount);
+    S.basinActive = 1;
+    storeSet(CONFIG.storage.basinActive, 1);
+    el.textContent = '✅ 聚宝盆已激活：下一次无尽模式红包掉落概率 88%（该次结束失效）';
+  } else if (key === 'repair') {
+    if (S.repairCount <= 0) { AudioSys.play('click'); el.textContent = '未拥有紧急维修，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    if (S.repairActive) { AudioSys.play('click'); el.textContent = '紧急维修已生效中（下一次挑战被击毁时触发）'; el.style.color = '#ff8fa3'; return; }
+    S.repairCount -= 1;
+    storeSet(CONFIG.storage.repairCount, S.repairCount);
+    S.repairActive = 1;
+    storeSet(CONFIG.storage.repairActive, 1);
+    el.textContent = '✅ 紧急维修已激活：下一次挑战被击毁时恢复 1 点生命并无敌 3 秒（一局仅一次）';
+  } else if (key === 'firesupport') {
+    if (!S.fireSupportOwn || S.fireSupportUsed) { AudioSys.play('click'); el.textContent = '未拥有火力支援，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    S.fireSupportUsed = 1;
+    storeSet(CONFIG.storage.fireSupportUsed, 1);
+    el.textContent = '✅ 火力支援已启用：对局中按 M 键召唤伴生僚机（10 秒生效，8 秒冷却）';
+  } else if (key === 'timefield') {
+    if (!S.timeFieldOwn || S.timeFieldUsed) { AudioSys.play('click'); el.textContent = '未拥有错乱时空，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    S.timeFieldUsed = 1;
+    storeSet(CONFIG.storage.timeFieldUsed, 1);
+    el.textContent = '✅ 错乱时空已启用：每 12 秒 66% 概率触发时空静止 6 秒（世界冻结，我方正常）';
+  }
+  el.style.color = '#3dffa2';
+  // 使用音效：紧急维修/大变幡/火力支援/错乱时空 大展宏图；八方来财/聚宝盆 来财音效
+  AudioSys.play(['repair', 'banner', 'firesupport', 'timefield'].includes(key) ? 'transform' : 'redPacket');
+  updateBackpackUI();
+  updateShopUI();
+}
+/* 聚宝盆（一次性）失效判定：阵亡 / 回主菜单 / 重新开始 / 关闭页面均视为本次无尽结束 */
+function consumeBasin() {
+  if (S.mode === 'endless' && S.basinActive) {
+    S.basinActive = 0;
+    storeSet(CONFIG.storage.basinActive, 0);
+  }
+}
+/* 紧急维修（一次性）复活判定：被击毁时恢复 1 点生命并无敌 3 秒（关卡/无尽模式通用，一局仅一次） */
+function tryEmergencyRepair() {
+  if (!S.repairActive) return false;
+  S.repairActive = 0;
+  storeSet(CONFIG.storage.repairActive, 0);
+  S.lives = 1;
+  S.invincibleT = 3;
+  S.state = 'playing';   // 防御：确保复活后处于对局状态
+  S.playerDead = false;
+  explosion(S.player.x, S.player.y, 1.2, [CONFIG.colors.green]);
+  popup(S.player.x, S.player.y - 40, '紧急维修！生命+1', CONFIG.colors.green);
+  AudioSys.play('transform');
+  console.info('[装备] 紧急维修触发：生命+1，无敌 3 秒（' + S.mode + ' 模式）');
+  return true;
+}
+/* 紧急维修（一次性）失效判定：进入挑战即算生效，不论以何种形式退出本次挑战（通关/阵亡/回主菜单/重开/关页面）均失效 */
+function consumeRepair() {
+  if (S.repairActive) {
+    S.repairActive = 0;
+    storeSet(CONFIG.storage.repairActive, 0);
+  }
+}
+/* 卸下装备：取消已使用/生效状态（一次性道具卸下返还持有数），下次挑战佩戴可灵活调整 */
+function unequipItem(key) {
+  const el = $('bp-msg');
+  if (key === 'banner') {
+    if (!S.artifactUsed) return;
+    S.artifactUsed = 0;
+    storeSet(CONFIG.storage.artifactUsed, 0);
+    el.textContent = '✅ 已卸下大变幡：变身掉率加成取消，可再次使用';
+  } else if (key === 'eight') {
+    if (!S.eightUsed) return;
+    S.eightUsed = 0;
+    storeSet(CONFIG.storage.eightUsed, 0);
+    el.textContent = '✅ 已卸下八方来财：通关红包加成取消，可再次使用';
+  } else if (key === 'basin') {
+    if (!S.basinActive) return;
+    S.basinActive = 0;
+    storeSet(CONFIG.storage.basinActive, 0);
+    S.basinCount += 1;
+    storeSet(CONFIG.storage.basinCount, S.basinCount);
+    el.textContent = '✅ 已卸下聚宝盆：红包概率加成取消，聚宝盆已返还';
+  } else if (key === 'repair') {
+    if (!S.repairActive) return;
+    S.repairActive = 0;
+    storeSet(CONFIG.storage.repairActive, 0);
+    S.repairCount += 1;
+    storeSet(CONFIG.storage.repairCount, S.repairCount);
+    el.textContent = '✅ 已卸下紧急维修：复活效果取消，紧急维修已返还';
+  } else if (key === 'firesupport') {
+    if (!S.fireSupportUsed) return;
+    S.fireSupportUsed = 0;
+    storeSet(CONFIG.storage.fireSupportUsed, 0);
+    el.textContent = '✅ 已卸下火力支援：M 键召唤技能取消，可再次使用';
+  } else if (key === 'timefield') {
+    if (!S.timeFieldUsed) return;
+    S.timeFieldUsed = 0;
+    storeSet(CONFIG.storage.timeFieldUsed, 0);
+    el.textContent = '✅ 已卸下错乱时空：时空静止领域取消，可再次使用';
+  } else return;
+  el.style.color = '#3dffa2';
+  AudioSys.play('click');
+  updateBackpackUI();
+  updateShopUI();
+}
+/* 装备皮肤（classic / gold / silver / feather），原皮肤始终保留可换回 */
+function equipSkin(name) {
+  const ownMap = { gold: 'skinOwn', silver: 'silverOwn', feather: 'featherOwn' };
+  if (name !== 'classic' && (!S[ownMap[name]] || S.skin === name)) { AudioSys.play('click'); return; }
+  if (name === 'classic' && S.skin === 'classic') { AudioSys.play('click'); return; }
+  S.skin = name;
+  storeSet(CONFIG.storage.skinEquipped, name);
+  AudioSys.play('click');   // 皮肤换装：使用常规按钮音效
+  const el = $('bp-msg');
+  const names = { classic: '✅ 已换回原皮肤（经典霓虹蓝翼）', gold: '✅ 已装备黄金之翼：机翼金色发光！', silver: '✅ 已装备冷银之翼：机翼冷银发光！', feather: '✅ 已装备 I can fly：纯白羽毛翼，可触发高空飞行！' };
+  el.textContent = names[name];
+  el.style.color = '#3dffa2';
+  updateBackpackUI();
+  updateShopUI();
+}
+/* 声音开关：全局静音（元素音频 muted + WebAudio 主增益），状态持久化 */
+function applySound(on) {
+  S.soundOn = on;
+  AudioSys.muted = !on;
+  storeSet(CONFIG.storage.soundOn, on);
+  for (const key in AudioSys.loaded) for (const el of AudioSys.loaded[key]) el.muted = !on;
+  if (AudioSys.master) AudioSys.master.gain.value = on ? 0.9 : 0;
+}
+/* 点击声音开关：切换 ON/OFF，图标与拨杆联动 */
+function toggleSound() {
+  applySound(!S.soundOn);
+  $('btn-sound').classList.toggle('off', !S.soundOn);
+  $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
+  if (S.soundOn) AudioSys.play('click');
+}
+/* 界面装饰元素随状态显隐：声音按钮（非战斗界面）/ 移动端按钮（战斗界面） */
+function updateChrome() {
+  const inPlay = ['playing', 'paused', 'winAnim', 'loseAnim'].includes(S.state);
+  $('btn-sound').style.display = inPlay ? 'none' : 'flex';
+  $('mobile-ctrl').classList.toggle('on', S.state === 'playing' || S.state === 'paused');
+}
+/* 返回主菜单 */
+function toMenu() {
+  const exitState = S.state;   // 记录退出前状态（判断是否对局中退出，用于红包反馈）
+  consumeBasin();    // 无尽模式中途退出：聚宝盆按本次结束失效
+  consumeRepair();   // 退出本次挑战：紧急维修失效（需重新装备）
+  commitLogStats();  // 飞行日志落盘
+  S.state = 'menu';
+  AudioSys.setBGMRate(1);
+  if (AudioSys.currentBgmKey !== 'menu') {   // 已在播菜单 BGM 时不重复起播
+    AudioSys.stopBGM();
+    AudioSys.playBGM('menu');
+  }
+  S.enemies = []; S.pBullets = []; S.eBullets = []; S.powerups = []; S.particles = []; S.lasers = []; S.popups = []; S.aliens = [];
+  S.boss = null; S.bossSpawned = false;
+  S.transformT = 0;
+  // 对局中途退出（暂停/进行中）→ 主菜单飘字反馈本局红包收集情况（结算界面已有展示，不重复提示）
+  if (exitState === 'playing' || exitState === 'paused') {
+    popup(CONFIG.W / 2, CONFIG.H * 0.62, S.redPacketsRun > 0 ? '🎒 本局获得 ' + S.redPacketsRun + ' 个红包' : '🎒 本局未获得红包', CONFIG.colors.yellow);
+  }
+  updateMenuStats();
+  showScreen('scr-menu');
+  $('hud').classList.remove('show');
+  $('bossbar').classList.remove('show');
+  $('transform-bar').classList.remove('show');
+  $('highfly-bar').classList.remove('show');
+  $('timefield-bar').classList.remove('show');
+}
+
+/* ==================== 12. 主循环（requestAnimationFrame） ==================== */
+let lastT = 0;
+function loop(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.05) || 0.016;
+  lastT = now;
+  S.time += dt;
+  updateBG(dt);
+  updateChrome();
+  if (S.state === 'playing' || S.state === 'paused') updateHUD();
+  if (S.state !== 'paused') update(dt);   // 暂停时冻结游戏逻辑
+  // 震动
+  ctx.save();
+  if (S.shake) ctx.translate(rand(-1, 1) * S.shake.p * S.shake.t * 2, rand(-1, 1) * S.shake.p * S.shake.t * 2);
+  if (S.timeStopT > 0) ctx.translate(rand(-2.5, 2.5), rand(-2.5, 2.5));   // 时空静止：持续微抖（错乱感）
+  drawBG();
+  if (['menu', 'guide', 'shop', 'clearScreen', 'gameover', 'victory', 'intro', 'modeSelect', 'backpack', 'rank'].includes(S.state)) drawMenuDeco();
+  drawWorld();
+  if (S.state === 'guide') drawGuideIcons();       // 指引界面的道具图标动画
+  if (S.state === 'intro') renderIntroPreviews();  // 关卡介绍的敌机/Boss 预览动画
+  if (S.state === 'shop') renderShopIcons();          // 商店图标动画（含变暗状态）
+  if (S.state === 'backpack') renderBackpackIcons();  // 背包图标动画
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+
+/* ==================== 13. 缩放与启动 ==================== */
+/* Canvas 等比缩放：适配 PC / 平板 / 手机，保证 16:9 */
+function resize() {
+  const s = Math.min(innerWidth / CONFIG.W, innerHeight / CONFIG.H);
+  wrap.style.width = (CONFIG.W * s) + 'px';
+  wrap.style.height = (CONFIG.H * s) + 'px';
+  wrap.style.fontSize = Math.max(11, 15 * s) + 'px';   // 全局字体随画布缩放
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(CONFIG.W * s * dpr);
+  cv.height = Math.round(CONFIG.H * s * dpr);
+  ctx.setTransform(cv.width / CONFIG.W, 0, 0, cv.height / CONFIG.H, 0, 0);
+  // 竖屏提示
+  $('orient-hint').classList.toggle('show', innerWidth < innerHeight);
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+/* 切后台：清空输入状态并自动暂停 */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearInput();
+    if (S.state === 'playing') togglePause();
+  }
+});
+/* 关闭/刷新页面：若无尽模式对局进行中，聚宝盆按本次结束判定失效 */
+window.addEventListener('beforeunload', () => {
+  if (['playing', 'paused', 'winAnim', 'loseAnim', 'intro'].includes(S.state)) {
+    if (S.mode === 'endless') consumeBasin();
+    consumeRepair();
+    commitLogStats();   // 飞行日志落盘（关闭/刷新页面）
+  }
+});
+
+/* 初始化 */
+function init() {
+  // 背景星星
+  for (let i = 0; i < CONFIG.effects.starCount; i++)
+    S.stars.push({ x: rand(0, CONFIG.W), y: rand(0, CONFIG.H), r: rand(0.6, 2), speed: rand(15, 60), tw: rand(0, PI2), c: pick(['#eaf6ff', '#7cfffb', '#b388ff']) });
+  // 揽佬头像（存在则作为英雄头像；失败则 Canvas 绘制抽象英雄）
+  const av = new Image();
+  av.onload = () => { S.avatar = av; console.info('[图像] 揽佬头像加载成功，英雄使用真人头像'); };
+  av.onerror = () => { S.avatar = null; S.avatarFailed = true; console.warn('[图像] 未找到揽佬头像.jpeg → 使用 Canvas 绘制的抽象英雄'); };
+  av.src = CONFIG.audio.desktopDir + encodeURI('揽佬头像.jpeg');
+  // MV 外星人图片（无尽模式障碍）
+  loadAlienImage();
+  // 音频清单
+  AudioSys.loadAll().then(() => {
+    console.info('[游戏] 《中国人能飞》初始化完成！开始界面 BGM:', AudioSys.loaded['menu'] ? '真实音频' : '合成占位');
+  });
+  // 移动端按钮显示
+  if (window.matchMedia('(pointer: coarse)').matches) $('mobile-ctrl').classList.add('touch');
+  window.addEventListener('touchstart', () => $('mobile-ctrl').classList.add('touch'), { once: true, passive: true });
+  buildShopUI();           // 构建商店条目（装备 / 皮肤分类）
+  buildBackpackUI();       // 构建背包条目
+  applySound(S.soundOn);   // 同步初始声音开关状态
+  $('btn-sound').classList.toggle('off', !S.soundOn);
+  $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
+  updateMenuStats();
+  resize();
+  requestAnimationFrame(loop);
+}
+init();
+</script>
+</body>
+</html>
