@@ -174,6 +174,13 @@ html, body {
   font-size:.55em; letter-spacing:.14em; color:rgba(234,246,255,.32);
   text-shadow:0 0 6px rgba(0,229,255,.25); white-space:nowrap;
 }
+/* 左上角账号区（水印下方）：当前账号 + 退出登录 / 注销账户 */
+.menu-account {
+  position:absolute; top:2.7em; left:.45em; z-index:3;
+  display:flex; flex-direction:column; align-items:flex-start; gap:.3em;
+}
+.menu-account .hint { margin:0; font-size:.68em; }
+.acc-btns { display:flex; gap:.45em; }
 /* 开始界面顶部素材声明 tag（仅主菜单显示） */
 .menu-tag {
   position:absolute; top:.55em; left:50%; transform:translateX(-50%);
@@ -400,6 +407,13 @@ html, body {
     <!-- 开始界面 -->
     <div class="screen light" id="scr-menu">
       <div class="menu-watermark">开发者水印：摇号YANG</div>
+      <div class="menu-account">
+        <span class="hint" id="menu-user">👤 当前账号：—</span>
+        <div class="acc-btns">
+          <button class="btn logout-btn" data-action="session-out">退出登录</button>
+          <button class="btn logout-btn" data-action="logout">注销账户</button>
+        </div>
+      </div>
       <div class="menu-tag">部分图片及音乐素材来源于网络。如有侵权请联系删除</div>
       <div class="game-title">中国人能飞</div>
       <div class="game-sub">CHINESE PEOPLE CAN FLY</div>
@@ -423,8 +437,6 @@ html, body {
         <button class="btn" data-action="backpack">🎒 背包</button>
       </div>
       <div class="hint">ENTER 开始 · P 暂停 · 方向键/WASD 移动 · 空格/J 射击 · SHIFT 低速 · B 炸弹</div>
-      <div class="hint" id="menu-user">👤 当前账号：—</div>
-      <button class="btn logout-btn" data-action="logout">注销账户</button>
       <div class="hint" id="orient-hint">📱 建议横屏游玩体验更佳</div>
     </div>
 
@@ -971,6 +983,12 @@ function doLogout() {
   if (!confirm('确定注销账户「' + (S.currentUser || '') + '」吗？\n将清除该账户的全部游玩数据（含账号与密码），不可恢复！')) return;
   AudioSys.play('click');
   logoutUser();
+  location.reload();   // 回到登录页
+}
+/* 退出登录：仅清除当前会话（数据保留），回到登录页可重新登录/切换账号 */
+function doSessionOut() {
+  AudioSys.play('click');
+  localStorage.removeItem('ccf_current_user');
   location.reload();   // 回到登录页
 }
 
@@ -1576,6 +1594,7 @@ document.addEventListener('click', e => {
     case 'login':       doLogin(); break;
     case 'register':    doRegister(); break;
     case 'logout':      if (S.state === 'menu') doLogout(); break;
+    case 'session-out': if (S.state === 'menu') doSessionOut(); break;
     case 'use-banner':  if (S.state === 'backpack') useEquip('banner'); break;
     case 'use-eight':   if (S.state === 'backpack') useEquip('eight'); break;
     case 'use-basin':   if (S.state === 'backpack') useEquip('basin'); break;
