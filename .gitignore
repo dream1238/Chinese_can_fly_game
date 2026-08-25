@@ -1,0 +1,7 @@
+# 本地监测数据（含访客/用户信息，严禁公开）
+monitor/data.json
+monitor/data.json.bak
+
+# 系统文件
+Thumbs.db
+desktop.ini
