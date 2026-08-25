@@ -280,6 +280,18 @@ html, body {
 }
 .login-field input:focus { border-color:#7cfffb; box-shadow:0 0 12px rgba(0,229,255,.35); }
 .login-field input::placeholder { color:rgba(159,180,200,.5); }
+/* 密码框 + 自定义小眼睛（银白色，替代浏览器原生暗色眼睛） */
+.pwd-wrap { position:relative; display:flex; align-items:center; }
+.pwd-wrap input { width:100%; padding-right:2.7em; -webkit-text-security: disc; }   /* 隐藏浏览器原生眼睛，用 disc 圆点遮蔽 */
+.pwd-wrap input.visible { -webkit-text-security: none; }
+.pwd-eye {
+  position:absolute; right:.25em; width:2.3em; height:2.3em; background:none; border:none;
+  cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center; flex:none;
+}
+.pwd-eye svg { width:1.35em; height:1.35em; fill:none; stroke:#d7e2ee; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.pwd-eye .eye-slash { display:none; }
+.pwd-eye.on .eye-slash { display:block; }   /* 密码可见时显示斜线（闭眼） */
+.pwd-eye:hover svg { stroke:#ffffff; }
 /* 登录/注册 Tab 切换 */
 .auth-tabs { display:flex; gap:.6em; margin-bottom:.4em; }
 .auth-tab {
@@ -406,7 +418,14 @@ html, body {
       </div>
       <div class="panel">
         <div class="login-field"><label>账户名</label><input id="login-name" maxlength="12" placeholder="请输入账户名" autocomplete="off"></div>
-        <div class="login-field"><label>密码（6 位数字）</label><input id="login-pwd" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位数字密码"></div>
+        <div class="login-field"><label>密码（6 位数字）</label>
+          <div class="pwd-wrap">
+            <input id="login-pwd" type="text" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位数字密码" autocomplete="off">
+            <button type="button" id="login-eye" class="pwd-eye" title="显示/隐藏密码" tabindex="-1">
+              <svg viewBox="0 0 24 24"><path class="eye-ball" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle class="eye-pupil" cx="12" cy="12" r="3"/><path class="eye-slash" d="M4 4l16 16"/></svg>
+            </button>
+          </div>
+        </div>
         <div class="hint login-msg" id="login-msg"></div>
       </div>
       <button class="btn primary" data-action="submit-auth" id="btn-auth-submit">登 录</button>
@@ -998,6 +1017,14 @@ function doRegister() {
 }
 /* 按当前 Tab 模式提交 */
 function doSubmitAuth() { AUTH_MODE === 'login' ? doLogin() : doRegister(); }
+/* 自定义小眼睛：切换密码明文/圆点显示 */
+function togglePwd() {
+  const inp = $('login-pwd');
+  const eye = $('login-eye');
+  const visible = inp.classList.toggle('visible');
+  eye.classList.toggle('on', visible);
+  inp.focus();   // 保持输入焦点
+}
 function doLogout() {
   if (!confirm('确定注销账户「' + (S.currentUser || '') + '」吗？\n将清除该账户的全部游玩数据（含账号与密码），不可恢复！')) return;
   AudioSys.play('click');
@@ -4625,6 +4652,8 @@ function init() {
 }
 /* 登录页输入框：Enter 按当前 Tab 模式提交 */
 $('login-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSubmitAuth(); } });
+/* 自定义小眼睛按钮：显示/隐藏密码 */
+$('login-eye').addEventListener('click', e => { e.preventDefault(); togglePwd(); });
 $('login-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('login-pwd').focus(); } });
 init();
 </script>
