@@ -338,6 +338,12 @@ html, body {
 .si-price { color:#ffe66d; font-size:.85em; }
 .si-own { color:#9fb4c8; font-size:.75em; }
 .btn:disabled { opacity:.35; cursor:default; box-shadow:none; }
+/* 晋升动画引导：高亮「查看段位详情」按钮 */
+.btn.hint-pulse { animation:hintPulse .55s ease-in-out 6; border-color:#ffd76e; color:#ffd76e; }
+@keyframes hintPulse {
+  0%,100% { box-shadow:0 0 6px rgba(255,215,110,.4); transform:scale(1); }
+  50%     { box-shadow:0 0 24px rgba(255,215,110,.95); transform:scale(1.08); }
+}
 .cat-label { align-self:stretch; text-align:center; color:#b388ff; letter-spacing:.35em; font-size:.78em; margin-top:.55em; text-shadow:0 0 8px rgba(180,136,255,.5); }
 .guide-list { font-size:.88em; color:#b8ccdd; line-height:1.9; letter-spacing:.08em; text-align:left; }
 .guide-list b { color:#7cfffb; }
@@ -455,7 +461,7 @@ html, body {
       </div>
       <div class="rank-menu-row">
         <span class="hint" id="menu-rank-line">🏅 段位：见习机长</span>
-        <button class="btn btn-sm" data-action="rank">查看段位详情</button>
+        <button class="btn btn-sm" data-action="rank" id="btn-rank">查看段位详情</button>
       </div>
       <div class="hint" id="menu-daily-line">📅 无尽 · 今日 0 / 昨日 ——</div>
       <div class="btn-row" style="margin-top:.6em">
@@ -1065,6 +1071,15 @@ function formatDuration(sec) {
   if (sec >= 60) return Math.floor(sec / 60) + '分' + (sec % 60) + '秒';
   return sec + '秒';
 }
+/* 缓动函数（晋升动画用） */
+const easeOutBack = x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const easeIn = x => x * x;
+/* HTML 元素中心 → 画布逻辑坐标（晋升动画飞向「查看段位详情」按钮用） */
+function btnLogicalPos(el) {
+  const r = el.getBoundingClientRect();
+  const w = wrap.getBoundingClientRect();
+  return { x: (r.left - w.left + r.width / 2) / w.width * CONFIG.W, y: (r.top - w.top + r.height / 2) / w.height * CONFIG.H };
+}
 /* 段位任务是否达标（key 为空表示无额外任务） */
 function rankTaskDone(i) {
   const r = CONFIG.ranks[i];
@@ -1209,6 +1224,8 @@ const S = {
   bossKills: storeGet(CONFIG.storage.bossKills, 0),      // 历史击杀 Boss 次数
   perfectClears: storeGet(CONFIG.storage.perfectClears, 0),  // 历史三关无伤通关次数
   rankStart: 0,                                          // 本局开始时的段位下标（结算晋升判定用）
+  promotedRank: 0,                                       // 本局晋升的段位下标（0 表示未晋升，回首页时播放晋升动画）
+  rankAnim: null,                                        // 晋升动画状态 { t, rankIdx, target }
   fireSupportOwn: storeGet(CONFIG.storage.fireSupportOwn, 0),   // 火力支援已购 0/1
   fireSupportUsed: storeGet(CONFIG.storage.fireSupportUsed, 0), // 火力支援已使用 0/1
   wingmen: [], fireSupportT: 0, fireSupportCd: 0, wingmanFireCd: 0,  // 僚机状态
@@ -1469,6 +1486,24 @@ function sfxWingShoot() {
     o.connect(g); g.connect(AudioSys.sfxBus);
     o.start(t + w); o.stop(t + w + 0.07);
   }
+}
+/* 恭喜晋升音效（自主合成）：C-E-G-C 上行琶音 + 彩带噪声 */
+function sfxRankUp() {
+  const c = AudioSys.ctx; if (!c) return;
+  const t = c.currentTime;
+  const notes = [523.25, 659.25, 783.99, 1046.5];
+  notes.forEach((f, i) => {
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = i === 3 ? 'triangle' : 'sine';
+    o.frequency.value = f;
+    const st = t + i * 0.09;
+    g.gain.setValueAtTime(0.0001, st);
+    g.gain.exponentialRampToValueAtTime(0.45, st + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, st + 0.42);
+    o.connect(g); g.connect(AudioSys.sfxBus);
+    o.start(st); o.stop(st + 0.45);
+  });
+  sfxNoise(0.7, 0.22, 3800, 0.12);   // 彩带喷发声
 }
 function synthSfx(key) {
   switch (key) {
@@ -2503,6 +2538,7 @@ function update(dt) {
     collisions();
   }
   updateParticles(dt);
+  if (S.rankAnim) updateRankAnim(dt);   // 段位晋升动画（首页播放）
   if (S.state === 'winAnim' || S.state === 'loseAnim') updateWinLoseAnim(dt);
   // 故障抖动计时器
   if (S.state !== 'menu' && S.state !== 'guide' && S.state !== 'shop') {
@@ -3467,6 +3503,73 @@ function drawPopups() {
   ctx.globalAlpha = 1;
 }
 
+/* 段位晋升动画更新：彩带持续喷发（1.2s 内），3.2s 结束并高亮引导按钮 */
+function updateRankAnim(dt) {
+  const a = S.rankAnim; if (!a) return;
+  a.t += dt;
+  // 彩带喷发（中央向四周，重力下落由粒子系统处理）
+  if (a.t < 1.2 && Math.random() < 0.75) {
+    const ang = rand(0, PI2), sp = rand(120, 340);
+    S.particles.push({ type: 'shard', x: CONFIG.W / 2, y: CONFIG.H * 0.38, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 130, life: rand(1, 1.9), size: rand(3, 8), color: pick(['#ffd76e', '#ff8fa3', '#7cfffb', '#b388ff', '#3dffa2']), rot: rand(0, PI2), vr: rand(-8, 8) });
+  }
+  if (a.t >= 3.2) {
+    S.rankAnim = null;
+    // 引导：高亮「查看段位详情」按钮
+    const b = $('btn-rank');
+    if (b) { b.classList.add('hint-pulse'); setTimeout(() => b.classList.remove('hint-pulse'), 3500); }
+  }
+}
+/* 段位晋升动画绘制：徽章中央放大 + 金色文字 → 缩小飞向「查看段位详情」按钮 */
+function drawRankAnim() {
+  const a = S.rankAnim; if (!a) return;
+  const t = a.t;
+  const cx = CONFIG.W / 2, cy = CONFIG.H * 0.38;
+  let scale, x, y, alpha;
+  if (t < 1.6) {
+    // 出现放大（easeOutBack 弹性）+ 淡入
+    const inT = Math.min(1, t / 0.9);
+    scale = 0.2 + (1.3 - 0.2) * easeOutBack(inT);
+    alpha = Math.min(1, t / 0.4);
+    x = cx; y = cy;
+  } else {
+    // 缩小飞向按钮位置
+    const f = Math.min(1, (t - 1.6) / 1.6);
+    if (!a.target) a.target = btnLogicalPos($('btn-rank'));
+    scale = 1.3 * (1 - f * 0.92);
+    x = cx + (a.target.x - cx) * easeIn(f);
+    y = cy + (a.target.y - cy) * easeIn(f);
+    alpha = 1 - f * 0.85;
+  }
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, alpha);
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  // 金色光晕
+  const rg = ctx.createRadialGradient(0, 0, 10, 0, 0, 120);
+  rg.addColorStop(0, 'rgba(255,215,110,0.5)');
+  rg.addColorStop(1, 'rgba(255,215,110,0)');
+  ctx.fillStyle = rg;
+  ctx.beginPath(); ctx.arc(0, 0, 120, 0, PI2); ctx.fill();
+  // 段位徽章（大号 emoji）
+  ctx.font = '100px serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(RANK_MEDALS[a.rankIdx], 0, -20);
+  // 金色圆环
+  ctx.strokeStyle = 'rgba(255,215,110,0.9)';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(0, -20, 80, 0, PI2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,215,110,0.3)';
+  ctx.lineWidth = 9;
+  ctx.beginPath(); ctx.arc(0, -20, 80, 0, PI2); ctx.stroke();
+  // 金色文字「恭喜你晋升 XX」
+  ctx.font = 'bold 32px "Courier New", monospace';
+  ctx.fillStyle = '#ffd76e';
+  ctx.shadowColor = '#ffd76e'; ctx.shadowBlur = 20;
+  ctx.fillText('恭喜你晋升 ' + CONFIG.ranks[a.rankIdx].name, 0, 62);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
 /* 时空错乱特效：紫色色罩 + 错乱扫描条 + 时间涟漪（时空静止期间） */
 function drawTimeFieldFx() {
   if (S.timeStopT <= 0) return;
@@ -3500,6 +3603,7 @@ function drawWorld() {
   }
   drawParticles();
   drawPopups();
+  if (S.rankAnim) drawRankAnim();   // 段位晋升动画（最上层）
   // Boss 警告横幅
   if (S.warnT > 0 && Math.floor(S.time * 8) % 2 === 0) {
     ctx.save();
@@ -4032,6 +4136,7 @@ function showGameOver() {
   }
   // 段位晋升提示（段位为条件化判定，以本局开局时的段位快照比较）
   const upIdx = currentRankIndex();
+  S.promotedRank = upIdx > S.rankStart ? upIdx : 0;   // 记录晋升，回首页时播放晋升动画
   if (upIdx > S.rankStart) { $('over-rank-row').style.display = ''; $('over-rank').textContent = '🏅 晋升 ' + CONFIG.ranks[upIdx].name + '！'; }
   $('over-rp').textContent = S.redPacketsRun;
   showScreen('scr-over');
@@ -4051,6 +4156,7 @@ function showVictory() {
   if (S.deaths === 0) { S.perfectClears++; storeSet(CONFIG.storage.perfectClears, S.perfectClears); }
   // 段位晋升提示（段位为条件化判定，以本局开局时的段位快照比较）
   const upIdx = currentRankIndex();
+  S.promotedRank = upIdx > S.rankStart ? upIdx : 0;   // 记录晋升，回首页时播放晋升动画
   if (upIdx > S.rankStart) { $('vic-rank-row').style.display = ''; $('vic-rank').textContent = '🏅 晋升 ' + CONFIG.ranks[upIdx].name + '！'; }
   // 八方来财（永久）：全部通关结算红包 +8（本局红包行显示为“总数(+8)”表明经过加成）
   let eightBonus = 0;
@@ -4531,6 +4637,12 @@ function toMenu() {
   // 对局中途退出（暂停/进行中）→ 主菜单飘字反馈本局红包收集情况（结算界面已有展示，不重复提示）
   if (exitState === 'playing' || exitState === 'paused') {
     popup(CONFIG.W / 2, CONFIG.H * 0.62, S.redPacketsRun > 0 ? '🎒 本局获得 ' + S.redPacketsRun + ' 个红包' : '🎒 本局未获得红包', CONFIG.colors.yellow);
+  }
+  // 段位晋升动画：结算页返回首页时播放（徽章放大 + 彩带 + 金色文字 + 缩小引导到「查看段位详情」）
+  if (S.promotedRank > 0) {
+    S.rankAnim = { t: 0, rankIdx: S.promotedRank, target: null };
+    S.promotedRank = 0;
+    sfxRankUp();   // 恭喜音效（合成）
   }
   updateMenuStats();
   showScreen('scr-menu');
