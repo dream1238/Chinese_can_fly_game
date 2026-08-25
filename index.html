@@ -872,8 +872,10 @@ function hashPwd(u, p) {
 }
 function getAccounts() { try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY)) || {}; } catch (e) { return {}; } }
 function setAccounts(a) { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(a)); }
-function getCurrentUser() { try { return localStorage.getItem(CURR_USER_KEY) || ''; } catch (e) { return ''; } }
-function setCurrentUser(u) { localStorage.setItem(CURR_USER_KEY, u); }
+/* 注意：getCurrentUser 用字面量键名——它在文件早期（CURRENT_USER 初始化）就被调用，
+   此时 CURR_USER_KEY 常量仍处于 TDZ 未初始化状态，引用常量会抛错导致返回空、触发无限 reload */
+function getCurrentUser() { try { return localStorage.getItem('ccf_current_user') || ''; } catch (e) { return ''; } }
+function setCurrentUser(u) { localStorage.setItem('ccf_current_user', u); }
 /* 注册：账户名 + 6 位数字密码，新用户为全新数据 */
 function registerUser(name, pwd) {
   if (!/^[一-龥A-Za-z0-9_]{1,12}$/.test(name)) return { ok: false, msg: '账户名限 1-12 位中文/字母/数字/下划线' };
