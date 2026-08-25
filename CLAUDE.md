@@ -2,6 +2,15 @@
 
 单文件网页游戏：`index.html`（Canvas 2D + 原生 JS + CSS，无外部依赖）。
 
+## 部署与登录（2026-08-25 更新）
+
+- **线上地址**：https://dream1238.github.io/Chinese_can_fly_game/ （仓库 dream1238/Chinese_can_fly_game，公开）
+- **登录流程**：未登录一律显示登录页；**无自动登录**（已移除 ccf_first_launch 自动登录 YH 逻辑）。
+- **开发者账号 YH（密码 456789）**：仅在浏览器存在待迁移旧数据（ccf_migrated_data）时由 ensureDevAccount 自动创建；线上全新环境不创建。
+- **音频资源**：全部位于游戏目录 `audio/` 子目录（含 BGM×4、音效×7、揽佬头像.jpeg、外星人.png），`CONFIG.audio.desktopDir = 'audio/'` 相对路径。缺失文件（shoot/explosion/boss mention/click）走合成音效。
+- **迁移键名 bug（已修）**：importMigratedTo 必须按 CONFIG.storage 映射回属性名写入 `ccf_u_<用户>_<属性名>`（旧实现拼成 `ccf_u_YH_ccf_redPackets` 永读不到）。
+- **手机端**：竖屏显示全屏「建议横屏游玩」遮罩（#orient-overlay，resize 时按宽高比切换）；矮屏（max-height 430px）界面改为顶部排列+可滚动防溢出。
+
 ## 核心概念定义（务必遵守）
 
 - **「局 / 挑战」**：从选择进入关卡模式或无尽模式后开始，以**任何方式退出本次模式**为结束（失败 / 全部通关 / 暂停后回主菜单 / 重新开始 / 关闭页面等），算作一局 / 一次挑战。
