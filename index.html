@@ -113,6 +113,13 @@ html, body {
 #btn-fire:active { background:rgba(255,59,92,.3); }
 #btn-bomb { right:6.5em; bottom:1.6em; width:3.4em; height:3.4em; font-size:.85em; }
 #btn-pause { right:1em; top:4.6em; width:2.9em; height:2.9em; font-size:.8em; }
+/* 慢速按钮（摇杆上方，对应键盘 SHIFT 慢速） */
+#btn-slow {
+  left:2.6em; bottom:10.4em; width:4em; height:4em; font-size:.8em;
+  border-color:rgba(255,215,110,.75); color:#ffe66d;
+  box-shadow:0 0 14px rgba(255,215,110,.3) inset;
+}
+#btn-slow:active { background:rgba(255,215,110,.28); }
 /* 虚拟摇杆（左下角）：底座 + 摇杆头 */
 #joystick {
   position:absolute; left:1.4em; bottom:1.6em; width:7.4em; height:7.4em;
@@ -364,6 +371,22 @@ html, body {
 /* 商店/背包均已改用底部退出按钮，无右上角 ✕ */
 #shop-body { color:#b8ccdd; letter-spacing:.2em; font-size:.95em; }
 
+/* ==================== 数据迁移（登录页折叠区） ==================== */
+.migrate-box { display:flex; flex-direction:column; gap:.5em; align-items:center; max-width:34em; width:100%; margin-top:.5em; }
+.migrate-toggle {
+  font:inherit; font-size:.78em; letter-spacing:.12em; color:#9fb4c8; cursor:pointer;
+  background:none; border:1px dashed rgba(159,180,200,.4); padding:.4em 1.2em;
+}
+.migrate-panel { display:none; flex-direction:column; gap:.5em; width:100%; }
+.migrate-panel.show { display:flex; }
+#migrate-ta {
+  width:100%; min-height:4.5em; resize:vertical; font:inherit; font-size:.72em;
+  background:rgba(3,6,16,.7); color:#b8ccdd; border:1px solid rgba(0,229,255,.35);
+  padding:.5em .7em; letter-spacing:.05em;
+}
+.migrate-btns { display:flex; gap:.8em; justify-content:center; }
+.migrate-btns .btn { font-size:.8em; padding:.5em 1.4em; }
+
 /* ==================== 段位晋升动画顶层图层（全视口透明画布） ==================== */
 #rank-anim-layer {
   position:fixed; inset:0; z-index:90; pointer-events:none; display:none;
@@ -447,6 +470,7 @@ html, body {
     <div id="mobile-ctrl">
       <!-- 虚拟摇杆：拖动摇杆头控制飞机移动（速度与键盘一致） -->
       <div id="joystick"><div id="joy-knob"></div></div>
+      <button class="mbtn" id="btn-slow" title="慢速">SLOW</button>
       <button class="mbtn" id="btn-pause" title="暂停">⏸</button>
       <button class="mbtn" id="btn-bomb" title="炸弹">💣</button>
       <button class="mbtn" id="btn-fire" title="射击">FIRE</button>
@@ -481,6 +505,18 @@ html, body {
       </div>
       <button class="btn primary" data-action="submit-auth" id="btn-auth-submit">登 录</button>
       <div class="hint" style="margin-top:.9em">新用户注册后获得全新数据 · 数据保存在本浏览器（同一浏览器多账号独立）</div>
+      <!-- 数据迁移：换设备时导出账号数据，新设备粘贴导入 -->
+      <div class="migrate-box">
+        <button type="button" class="migrate-toggle" id="migrate-toggle">📦 数据迁移（换设备同步账号数据）</button>
+        <div class="migrate-panel" id="migrate-panel">
+          <textarea id="migrate-ta" rows="4" placeholder="导出：复制下方数据；导入：粘贴数据后点「导入到本地」"></textarea>
+          <div class="migrate-btns">
+            <button type="button" class="btn" data-action="migrate-export">导出当前账号数据</button>
+            <button type="button" class="btn" data-action="migrate-import">导入到本地</button>
+          </div>
+          <div class="hint" id="migrate-msg"></div>
+        </div>
+      </div>
     </div>
 
     <!-- 开始界面 -->
@@ -1105,6 +1141,41 @@ function doSessionOut() {
   localStorage.removeItem('ccf_current_user');
   location.reload();   // 回到登录页
 }
+/* ---------- 数据迁移（跨设备同步账号数据：导出 / 导入） ---------- */
+function migrateMsg(t, c) { const el = $('migrate-msg'); el.textContent = t; el.style.color = c || '#ff3b5c'; }
+/* 导出当前账号全部数据为 JSON（复制到新设备粘贴导入） */
+function migrateExport() {
+  const u = getCurrentUser();
+  if (!u) { migrateMsg('⚠️ 请先登录要导出的账号（如 YH）'); return; }
+  const prefix = 'ccf_u_' + u + '_';
+  const data = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf(prefix) === 0) data[k] = localStorage.getItem(k);
+  }
+  if (!Object.keys(data).length) { migrateMsg('⚠️ 该账号暂无数据可导出'); return; }
+  $('migrate-ta').value = JSON.stringify({ ver: 1, user: u, data });
+  migrateMsg('✅ 已导出 ' + Object.keys(data).length + ' 项数据，请复制 → 到新设备粘贴后导入', '#3dffa2');
+}
+/* 导入数据到本地（覆盖写入目标账号命名空间；账号需已注册） */
+function migrateImport() {
+  const raw = $('migrate-ta').value.trim();
+  if (!raw) { migrateMsg('⚠️ 请先粘贴导出的数据'); return; }
+  let pack;
+  try { pack = JSON.parse(raw); } catch (e) { migrateMsg('⚠️ 数据格式错误，请粘贴完整导出内容'); return; }
+  if (!pack || pack.ver !== 1 || !pack.user || !pack.data || typeof pack.data !== 'object') {
+    migrateMsg('⚠️ 数据格式无法识别，请重新导出后再试'); return;
+  }
+  const u = String(pack.user);
+  if (!/^[一-龥A-Za-z0-9_]{1,12}$/.test(u)) { migrateMsg('⚠️ 账号名不合法'); return; }
+  if (!getAccounts()[u]) { migrateMsg('⚠️ 账号「' + u + '」在本设备尚未注册，请先注册再导入'); return; }
+  let n = 0;
+  for (const k in pack.data) {
+    if (k.indexOf('ccf_u_' + u + '_') === 0) { localStorage.setItem(k, String(pack.data[k])); n++; }
+  }
+  migrateMsg('✅ 已导入 ' + n + ' 项数据到账号「' + u + '」，重新登录即可看到', '#3dffa2');
+}
+$('migrate-toggle').addEventListener('click', () => $('migrate-panel').classList.toggle('show'));
 
 /* ---------- 留存功能工具（段位 / 日志 / 每日彩蛋） ---------- */
 /* 本地时区日期 YYYYMMDD（勿用 toISOString，那是 UTC 会跨天错位） */
@@ -1646,9 +1717,10 @@ window.addEventListener('keyup', e => {
   if (k === ' ' || k === 'j') S.firing = false;
 });
 
-/* 虚拟摇杆（左下角）：拖动摇杆头控制飞机，速度与键盘一致（归一化 -1..1 × 玩家速度） */
+/* 虚拟摇杆（左下角）：拖动摇杆头控制飞机，速度与键盘一致（归一化 -1..1 × 玩家速度）
+   slow：SLOW 按钮按住时慢速（对应键盘 SHIFT） */
 const joyEl = $('joystick'), joyKnob = $('joy-knob');
-const JOY = { id: null, cx: 0, cy: 0, dx: 0, dy: 0 };
+const JOY = { id: null, cx: 0, cy: 0, dx: 0, dy: 0, slow: false };
 function joyMove(e) {
   if (JOY.id !== e.pointerId) return;
   const r = joyEl.getBoundingClientRect();
@@ -1679,11 +1751,16 @@ joyEl.addEventListener('pointerup', joyUp);
 joyEl.addEventListener('pointercancel', joyUp);
 window.addEventListener('pointerup', joyUp);   // 摇杆外松开也复位
 window.addEventListener('pointercancel', joyUp);
+/* SLOW 慢速按钮（按住 = 键盘 SHIFT 效果） */
+const btnSlow = $('btn-slow');
+btnSlow.addEventListener('pointerdown', e => { e.preventDefault(); AudioSys.unlock(); JOY.slow = true; });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+  btnSlow.addEventListener(ev, () => { JOY.slow = false; }));
 /* 清除全部输入状态（窗口失焦 / 切后台时调用，防止按键、摇杆卡死） */
 function clearInput() {
   Keys.clear();
   S.firing = false;
-  JOY.id = null; JOY.dx = 0; JOY.dy = 0;
+  JOY.id = null; JOY.dx = 0; JOY.dy = 0; JOY.slow = false;
   joyKnob.style.transform = 'translate(0,0)';
 }
 window.addEventListener('blur', clearInput);
@@ -1739,6 +1816,8 @@ document.addEventListener('click', e => {
     case 'tab-login':    if (S.state === 'login') setAuthMode('login'); break;
     case 'tab-register': if (S.state === 'login') setAuthMode('register'); break;
     case 'submit-auth':  if (S.state === 'login') doSubmitAuth(); break;
+    case 'migrate-export': if (S.state === 'login') migrateExport(); break;
+    case 'migrate-import': if (S.state === 'login') migrateImport(); break;
     case 'logout':      if (S.state === 'menu') doLogout(); break;
     case 'session-out': if (S.state === 'menu') doSessionOut(); break;
     case 'use-banner':  if (S.state === 'backpack') useEquip('banner'); break;
@@ -1890,10 +1969,14 @@ function updatePlayer(dt) {
   const l = Math.hypot(dx, dy) || 1;
   P.x += dx / l * spd * dt;
   P.y += dy / l * spd * dt;
-  // 虚拟摇杆：幅度 0..1 × 玩家速度（与键盘移动速度一致）
-  if (JOY.id !== null && (JOY.dx !== 0 || JOY.dy !== 0)) {
-    P.x += JOY.dx * spd * dt;
-    P.y += JOY.dy * spd * dt;
+  // 虚拟摇杆：方向归一 + 幅度平方曲线（低速区更精细，满推 100% 仍为满速）
+  // 死区 8% 防微抖漂移；SLOW 按钮按住 = 键盘 SHIFT 慢速
+  const jMag = Math.hypot(JOY.dx, JOY.dy);
+  if (JOY.id !== null && jMag > 0.08) {
+    const jSpd = spd * (JOY.slow ? CONFIG.player.slowFactor : 1);
+    const jv = jMag * jMag;   // 平方曲线：推 50% 只有 25% 速度，便于精瞄
+    P.x += JOY.dx / jMag * jv * jSpd * dt;
+    P.y += JOY.dy / jMag * jv * jSpd * dt;
   }
   P.x = clamp(P.x, 26, CONFIG.W - 26);
   P.y = clamp(P.y, 40, CONFIG.H - 30);
@@ -3573,7 +3656,7 @@ function updateRankAnim(dt) {
   a.t += dt;
   if (a.t < 1.2 && Math.random() < 0.75) {
     const ang = rand(0, PI2), sp = rand(120, 340);
-    a.shards.push({ x: CONFIG.W / 2, y: CONFIG.H * 0.38, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 130, life: rand(1, 1.9), maxLife: 1.9, size: rand(3, 8), color: pick(['#ffd76e', '#ff8fa3', '#7cfffb', '#b388ff', '#3dffa2']), rot: rand(0, PI2), vr: rand(-8, 8) });
+    a.shards.push({ x: CONFIG.W / 2, y: CONFIG.H / 2, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 130, life: rand(1, 1.9), maxLife: 1.9, size: rand(3, 8), color: pick(['#ffd76e', '#ff8fa3', '#7cfffb', '#b388ff', '#3dffa2']), rot: rand(0, PI2), vr: rand(-8, 8) });
   }
   // 更新彩带（重力下落 + 旋转衰减）
   for (const s of a.shards) {
@@ -3595,7 +3678,7 @@ function drawRankAnim() {
   layer.classList.add('show');
   rankCtx.clearRect(0, 0, innerWidth, innerHeight);   // 清空整层（变换下超大区域，防残影）
   const t = a.t;
-  const cx = CONFIG.W / 2, cy = CONFIG.H * 0.38;
+  const cx = CONFIG.W / 2, cy = CONFIG.H / 2;   // 正中央
   // 彩带（顶层绘制，背景透明可见）
   for (const s of a.shards) {
     if (s.life <= 0) continue;

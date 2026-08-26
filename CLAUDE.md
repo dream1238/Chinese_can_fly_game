@@ -10,8 +10,9 @@
 - **音频资源**：全部位于游戏目录 `audio/` 子目录（含 BGM×4、音效×7、揽佬头像.jpeg、外星人.png），`CONFIG.audio.desktopDir = 'audio/'` 相对路径。缺失文件（shoot/explosion/boss mention/click）走合成音效。
 - **迁移键名 bug（已修）**：importMigratedTo 必须按 CONFIG.storage 映射回属性名写入 `ccf_u_<用户>_<属性名>`（旧实现拼成 `ccf_u_YH_ccf_redPackets` 永读不到）。
 - **手机端**：竖屏显示全屏「建议横屏游玩」遮罩（#orient-overlay，resize 时按宽高比切换）；矮屏（max-height 430px）界面保持垂直居中+可滚动防溢出。
-- **虚拟摇杆**（左下角 #joystick）：触摸设备局内用摇杆控制移动，归一化幅度（0..1）× 玩家速度，与键盘速度一致；**已替代旧触摸拖拽**（dragTarget 逻辑移除，S 保留遗留字段）。
-- **段位晋升动画**：绘制在最顶层独立画布 #rank-anim-layer（z-index 90，全视口，背景透明可看到首页），彩带粒子存动画自有数组 a.shards；resize 同步「视口px→wrap px→960x540 逻辑坐标」变换。
+- **虚拟摇杆**（左下角 #joystick）：触摸设备局内用摇杆控制移动；方向归一 + **幅度平方曲线**（低速区精细，满推 100% 满速，移速与键盘一致）+ 8% 死区；**SLOW 按钮**（摇杆上方）= 键盘 SHIFT 慢速；**已替代旧触摸拖拽**（dragTarget 逻辑移除，S 保留遗留字段）。
+- **数据迁移**（登录页「📦 数据迁移」折叠区）：导出当前账号全部 `ccf_u_<账号>_*` 数据为 JSON → 新设备粘贴导入（覆盖写入，账号需已注册）；跨设备数据同步唯一途径（纯前端无后端）。
+- **段位晋升动画**：绘制在最顶层独立画布 #rank-anim-layer（z-index 90，全视口，背景透明可看到首页），**位置为屏幕正中央**（CONFIG.H/2），彩带粒子存动画自有数组 a.shards；resize 同步「视口px→wrap px→960x540 逻辑坐标」变换。
 
 ## 核心概念定义（务必遵守）
 
