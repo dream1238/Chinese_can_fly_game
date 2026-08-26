@@ -505,18 +505,6 @@ html, body {
       </div>
       <button class="btn primary" data-action="submit-auth" id="btn-auth-submit">登 录</button>
       <div class="hint" style="margin-top:.9em">新用户注册后获得全新数据 · 数据保存在本浏览器（同一浏览器多账号独立）</div>
-      <!-- 数据迁移：换设备时导出账号数据，新设备粘贴导入 -->
-      <div class="migrate-box">
-        <button type="button" class="migrate-toggle" id="migrate-toggle">📦 数据迁移（换设备同步账号数据）</button>
-        <div class="migrate-panel" id="migrate-panel">
-          <textarea id="migrate-ta" rows="4" placeholder="导出：复制下方数据；导入：粘贴数据后点「导入到本地」"></textarea>
-          <div class="migrate-btns">
-            <button type="button" class="btn" data-action="migrate-export">导出当前账号数据</button>
-            <button type="button" class="btn" data-action="migrate-import">导入到本地</button>
-          </div>
-          <div class="hint" id="migrate-msg"></div>
-        </div>
-      </div>
     </div>
 
     <!-- 开始界面 -->
@@ -545,6 +533,18 @@ html, body {
         <button class="btn btn-sm" data-action="rank" id="btn-rank">查看段位详情</button>
       </div>
       <div class="hint" id="menu-daily-line">📅 无尽 · 今日 0 / 昨日 ——</div>
+      <!-- 数据迁移：换设备时导出账号数据，新设备登录后粘贴导入 -->
+      <div class="migrate-box">
+        <button type="button" class="migrate-toggle" id="migrate-toggle">📦 数据迁移（换设备同步账号数据）</button>
+        <div class="migrate-panel" id="migrate-panel">
+          <textarea id="migrate-ta" rows="4" placeholder="导出：复制下方数据；导入：粘贴数据后点「导入」"></textarea>
+          <div class="migrate-btns">
+            <button type="button" class="btn" data-action="migrate-export">导出当前账号数据</button>
+            <button type="button" class="btn" data-action="migrate-import">导入</button>
+          </div>
+          <div class="hint" id="migrate-msg"></div>
+        </div>
+      </div>
       <div class="btn-row" style="margin-top:.6em">
         <button class="btn primary" data-action="start">▶ 开始游戏</button>
         <button class="btn" data-action="guide">操作指引</button>
@@ -1141,11 +1141,11 @@ function doSessionOut() {
   localStorage.removeItem('ccf_current_user');
   location.reload();   // 回到登录页
 }
-/* ---------- 数据迁移（跨设备同步账号数据：导出 / 导入） ---------- */
+/* ---------- 数据迁移（跨设备同步账号数据：导出 / 导入，首页使用） ---------- */
 function migrateMsg(t, c) { const el = $('migrate-msg'); el.textContent = t; el.style.color = c || '#ff3b5c'; }
 /* 导出当前账号全部数据为 JSON（复制到新设备粘贴导入） */
 function migrateExport() {
-  const u = getCurrentUser();
+  const u = S.currentUser || getCurrentUser();
   if (!u) { migrateMsg('⚠️ 请先登录要导出的账号（如 YH）'); return; }
   const prefix = 'ccf_u_' + u + '_';
   const data = {};
@@ -1155,9 +1155,9 @@ function migrateExport() {
   }
   if (!Object.keys(data).length) { migrateMsg('⚠️ 该账号暂无数据可导出'); return; }
   $('migrate-ta').value = JSON.stringify({ ver: 1, user: u, data });
-  migrateMsg('✅ 已导出 ' + Object.keys(data).length + ' 项数据，请复制 → 到新设备粘贴后导入', '#3dffa2');
+  migrateMsg('✅ 已导出账号「' + u + '」的 ' + Object.keys(data).length + ' 项数据，请复制 → 到新设备登录后粘贴导入', '#3dffa2');
 }
-/* 导入数据到本地（覆盖写入目标账号命名空间；账号需已注册） */
+/* 导入数据到本地（覆盖写入目标账号命名空间；账号需已注册，导入后切换登录即可见） */
 function migrateImport() {
   const raw = $('migrate-ta').value.trim();
   if (!raw) { migrateMsg('⚠️ 请先粘贴导出的数据'); return; }
@@ -1168,12 +1168,13 @@ function migrateImport() {
   }
   const u = String(pack.user);
   if (!/^[一-龥A-Za-z0-9_]{1,12}$/.test(u)) { migrateMsg('⚠️ 账号名不合法'); return; }
-  if (!getAccounts()[u]) { migrateMsg('⚠️ 账号「' + u + '」在本设备尚未注册，请先注册再导入'); return; }
+  if (!getAccounts()[u]) { migrateMsg('⚠️ 账号「' + u + '」在本设备尚未注册，请先注册/登录该账号后再导入'); return; }
   let n = 0;
   for (const k in pack.data) {
     if (k.indexOf('ccf_u_' + u + '_') === 0) { localStorage.setItem(k, String(pack.data[k])); n++; }
   }
-  migrateMsg('✅ 已导入 ' + n + ' 项数据到账号「' + u + '」，重新登录即可看到', '#3dffa2');
+  const same = S.currentUser === u;
+  migrateMsg('✅ 已导入 ' + n + ' 项数据到账号「' + u + '」' + (same ? '，正在显示的就是该账号' : '，请切换登录该账号查看'), '#3dffa2');
 }
 $('migrate-toggle').addEventListener('click', () => $('migrate-panel').classList.toggle('show'));
 
@@ -1816,8 +1817,8 @@ document.addEventListener('click', e => {
     case 'tab-login':    if (S.state === 'login') setAuthMode('login'); break;
     case 'tab-register': if (S.state === 'login') setAuthMode('register'); break;
     case 'submit-auth':  if (S.state === 'login') doSubmitAuth(); break;
-    case 'migrate-export': if (S.state === 'login') migrateExport(); break;
-    case 'migrate-import': if (S.state === 'login') migrateImport(); break;
+    case 'migrate-export': if (S.state === 'menu') migrateExport(); break;
+    case 'migrate-import': if (S.state === 'menu') migrateImport(); break;
     case 'logout':      if (S.state === 'menu') doLogout(); break;
     case 'session-out': if (S.state === 'menu') doSessionOut(); break;
     case 'use-banner':  if (S.state === 'backpack') useEquip('banner'); break;
