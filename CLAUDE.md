@@ -6,10 +6,12 @@
 
 - **线上地址**：https://dream1238.github.io/Chinese_can_fly_game/ （仓库 dream1238/Chinese_can_fly_game，公开）
 - **登录流程**：未登录一律显示登录页；**无自动登录**（已移除 ccf_first_launch 自动登录 YH 逻辑）。
-- **开发者账号 YH（密码 456789）**：仅在浏览器存在待迁移旧数据（ccf_migrated_data）时由 ensureDevAccount 自动创建；线上全新环境不创建。
+- **开发者账号 YH（密码 456789）**：ensureDevAccount 在**所有环境**（本地/线上）无条件预置；旧版本数据存在时自动导入（importMigratedTo 键名按 CONFIG.storage 映射）。
 - **音频资源**：全部位于游戏目录 `audio/` 子目录（含 BGM×4、音效×7、揽佬头像.jpeg、外星人.png），`CONFIG.audio.desktopDir = 'audio/'` 相对路径。缺失文件（shoot/explosion/boss mention/click）走合成音效。
 - **迁移键名 bug（已修）**：importMigratedTo 必须按 CONFIG.storage 映射回属性名写入 `ccf_u_<用户>_<属性名>`（旧实现拼成 `ccf_u_YH_ccf_redPackets` 永读不到）。
-- **手机端**：竖屏显示全屏「建议横屏游玩」遮罩（#orient-overlay，resize 时按宽高比切换）；矮屏（max-height 430px）界面改为顶部排列+可滚动防溢出。
+- **手机端**：竖屏显示全屏「建议横屏游玩」遮罩（#orient-overlay，resize 时按宽高比切换）；矮屏（max-height 430px）界面保持垂直居中+可滚动防溢出。
+- **虚拟摇杆**（左下角 #joystick）：触摸设备局内用摇杆控制移动，归一化幅度（0..1）× 玩家速度，与键盘速度一致；**已替代旧触摸拖拽**（dragTarget 逻辑移除，S 保留遗留字段）。
+- **段位晋升动画**：绘制在最顶层独立画布 #rank-anim-layer（z-index 90，全视口，背景透明可看到首页），彩带粒子存动画自有数组 a.shards；resize 同步「视口px→wrap px→960x540 逻辑坐标」变换。
 
 ## 核心概念定义（务必遵守）
 
