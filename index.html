@@ -4857,14 +4857,15 @@ function resize() {
   ctx.setTransform(cv.width / CONFIG.W, 0, 0, cv.height / CONFIG.H, 0, 0);
   // 竖屏全屏遮罩：手机竖屏时引导横屏并拦截误触（PC 宽>高不触发）
   $('orient-overlay').classList.toggle('show', innerWidth < innerHeight);
-  // 晋升动画顶层画布：全视口尺寸 + 视口px → wrap px → 960x540 逻辑坐标变换
+  // 晋升动画顶层画布：全视口尺寸 + 逻辑坐标 → wrap CSS px → 视口 CSS px → 画布像素 变换
+  // （顺序：scale(逻辑→wrap) → translate(wrap偏移→视口) → setTransform(css→物理像素)，矩阵右乘先应用）
   const dpr2 = Math.min(window.devicePixelRatio || 1, 2);
   const wr = wrap.getBoundingClientRect();
   rankCv.width = Math.round(innerWidth * dpr2);
   rankCv.height = Math.round(innerHeight * dpr2);
-  rankCtx.setTransform(rankCv.width / innerWidth, 0, 0, rankCv.height / innerHeight, 0, 0);
-  rankCtx.translate(-wr.left, -wr.top);
-  rankCtx.scale(CONFIG.W / wr.width, CONFIG.H / wr.height);
+  rankCtx.setTransform(dpr2, 0, 0, dpr2, 0, 0);
+  rankCtx.translate(wr.left, wr.top);
+  rankCtx.scale(wr.width / CONFIG.W, wr.height / CONFIG.H);
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 120));
