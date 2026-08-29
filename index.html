@@ -1435,12 +1435,15 @@ const AudioSys = {
         this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
           if (el) {
             this.missing.delete(key);
-            if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
+            // 原版已就绪：若正在播放该 key 的合成 BGM → 立即切换原版；若有暂存请求 → 接上
+            if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
+            else if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
           }
         });
       }
     }
     // 解锁后：菜单界面确保 BGM 在播放（自动播放被拦截时此刻重新尝试）
+    const h = $('unlock-hint'); if (h) h.style.display = 'none';   // 已交互，隐藏静音提示
     this.ensureMenuBGM();
   },
   /* 确保菜单 BGM 在播放：若 BGM 元素处于暂停（曾被自动播放策略拦截）则重新起播 */
@@ -1471,6 +1474,7 @@ const AudioSys = {
           return;
         }
         const a = new Audio(urls[i]);
+        a.preload = 'auto';   // 关键：iOS 上不显式加载就不下载，canplaythrough 永不触发 → 误判缺失
         let done = false;
         const ok = () => {
           if (done) return; done = true;
@@ -1480,7 +1484,9 @@ const AudioSys = {
         };
         const fail = () => { if (!done) { done = true; i++; next(); } };
         a.addEventListener('canplaythrough', ok, { once: true });
+        a.addEventListener('loadeddata', () => { if (a.readyState >= 2) ok(); }, { once: true });   // 数据已加载可播即视为成功（BGM 边下边播）
         a.addEventListener('error', fail, { once: true });
+        try { a.load(); } catch (e) {}   // 显式开始下载（iOS 必需）
         setTimeout(fail, 12000);   // 超时兜底（12 秒：手机慢网络下大 BGM 文件需要更久）
       };
       next();
@@ -1530,6 +1536,24 @@ const AudioSys = {
           window.addEventListener('pointerdown', once);
           window.addEventListener('keydown', once);
         }
+      }
+    }
+    // 终极保险：加载完成后若 BGM 仍缺失（慢网络），延迟自动重试 2 次（8s / 16s）
+    if (this.missing.size) {
+      for (let r = 0; r < 2; r++) {
+        setTimeout(() => {
+          if (!this.missing.size) return;
+          for (const key of [...this.missing]) {
+            if (!CONFIG.audio.bgmKeys.includes(key) || !CONFIG.audio.paths[key]) continue;
+            this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
+              if (el) {
+                this.missing.delete(key);
+                if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
+                else if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
+              }
+            });
+          }
+        }, 8000 * (r + 1));
       }
     }
   },
