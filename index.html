@@ -387,6 +387,17 @@ html, body {
 .migrate-btns { display:flex; gap:.8em; justify-content:center; }
 .migrate-btns .btn { font-size:.8em; padding:.5em 1.4em; }
 
+/* ==================== 全局诊断层（版本号 + 音频失败报告） ==================== */
+#build-tag {
+  position:fixed; bottom:.3em; right:.6em; z-index:95; pointer-events:none;
+  font-size:.55em; letter-spacing:.08em; color:rgba(234,246,255,.4);
+}
+#audio-debug {
+  position:fixed; bottom:1.6em; left:50%; transform:translateX(-50%); z-index:95; pointer-events:none;
+  font-size:.62em; letter-spacing:.05em; color:#ff3b5c; text-align:center;
+  text-shadow:0 0 6px rgba(0,0,0,.8); white-space:nowrap; max-width:96%; overflow:hidden;
+}
+
 /* ==================== 段位晋升动画顶层图层（全视口透明画布） ==================== */
 #rank-anim-layer {
   position:fixed; inset:0; z-index:90; pointer-events:none; display:none;
@@ -553,8 +564,6 @@ html, body {
       </div>
       <div class="hint">ENTER 开始 · P 暂停 · 方向键/WASD 移动 · 空格/J 射击 · SHIFT 低速 · B 炸弹</div>
       <div class="hint" id="unlock-hint" style="display:none; color:#ffe66d">🔇 浏览器拦截了自动播放，点击任意位置开启声音</div>
-      <div class="hint" id="audio-debug" style="color:#ff3b5c"></div>
-      <div class="hint" style="font-size:.6em; opacity:.6">构建 v<span id="build-tag"></span></div>
     </div>
 
     <!-- 新手操作指引 -->
@@ -753,6 +762,10 @@ html, body {
 
 <!-- 段位晋升动画顶层图层（全视口，背景透明，可见下层首页；z 序在一切界面之上、横屏遮罩之下） -->
 <div id="rank-anim-layer"><canvas id="rank-anim-cv"></canvas></div>
+
+<!-- 全局诊断层：构建版本号 + 音频加载失败报告（任何界面可见，排查线上问题用） -->
+<div id="build-tag">v</div>
+<div id="audio-debug"></div>
 
 <!-- 竖屏横屏引导遮罩（手机竖屏时全屏显示，横屏自动消失） -->
 <div id="orient-overlay">
@@ -1493,12 +1506,14 @@ const AudioSys = {
         const fail = () => { if (!done) { done = true; i++; next(); } };
         a.addEventListener('canplaythrough', ok, { once: true });
         a.addEventListener('error', fail, { once: true });
+        // 两端统一：loadeddata 补充成功信号（数据可播即成功，BGM 边下边播；线上网络下载大文件
+        // 死等 canplaythrough 完整下载 + 短超时必然超时误判缺失——首次版本 4s 超时线上全失败的根因）
+        a.addEventListener('loadeddata', () => { if (a.readyState >= 2) ok(); }, { once: true });
         if (IS_TOUCH) {
-          // 移动端：iOS 不显式加载就不下载，canplaythrough 永不触发 → 显式 load + loadeddata 补充成功信号
-          a.addEventListener('loadeddata', () => { if (a.readyState >= 2) ok(); }, { once: true });
+          // 移动端：iOS 不显式加载就不下载，canplaythrough 永不触发 → 显式 load（必需）
           try { a.load(); } catch (e) {}
         }
-        setTimeout(fail, IS_TOUCH ? 12000 : 4000);   // 超时兜底：手机慢网络 12s；桌面恢复首次 4s
+        setTimeout(fail, 15000);   // 超时兜底 15 秒（两端统一：线上下载 16MB 音频需要充足时间）
       };
       next();
     });
@@ -1603,6 +1618,7 @@ const AudioSys = {
   startLoadedBgm(key, loop) {
     const arr = this.loaded[key];
     if (!arr || !arr.length) return;
+    if (this.currentBgm === 'synth') SynthBGM.stop();   // 原版就绪：立即停掉还在响的合成 BGM（防叠放）
     const el = arr[0];
     el.volume = CONFIG.audio.bgmVolume;
     el.muted = this.muted;   // 播放时遵循当前静音状态
@@ -4980,6 +4996,7 @@ function init() {
   // ---- 账号系统初始化 ----
   migrateLegacyData();                       // 1) 打包旧版本无账号数据
   ensureDevAccount();                        // 2) 存在旧数据时预置开发者账号 YH / 456789 并导入
+  $('build-tag').textContent = 'v' + BUILD;
   if (!S.currentUser) {
     // 已注销或非本机：显示登录页，不进入首页
     showScreen('scr-login');
@@ -4988,7 +5005,6 @@ function init() {
     setInterval(() => reportStat('online'), 30000);   // 在线心跳（30 秒）
   } else {
     $('menu-user').textContent = '👤 当前账号：' + S.currentUser;
-    $('build-tag').textContent = BUILD;
     showScreen('scr-menu');
     reportStat('visit');   // 访问人次上报（本地监测）
     setInterval(() => reportStat('online'), 30000);   // 在线心跳（30 秒）
