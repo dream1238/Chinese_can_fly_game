@@ -985,10 +985,12 @@ let rankCtx = rankCv.getContext('2d');
 /* ==================== 3. 工具函数 ==================== */
 const PI2 = Math.PI * 2;
 /* 构建版本标记（排查线上缓存问题用：首页显示 + 控制台打印） */
-const BUILD = '2026-08-30-60c5e89';
+const BUILD = '2026-08-30-v6';
 console.log('[游戏] 构建版本:', BUILD);
 /* 音频加载失败记录（首页可视化报告，帮助排查线上音频问题） */
 window.__audioFail = [];
+/* 预期缺失的音频（本地也没有文件，一直用合成音效，不属于异常）：不显示在失败报告、不参与自愈重试 */
+const EXPECTED_MISSING = ['shoot', 'explosion', 'bossAlarm', 'click'];
 /* 版本自检：fetch version.json（no-store 绕过缓存）→ 与 BUILD 不符 → 强制刷新到最新版
    根治"浏览器/CDN 缓存旧版 index.html"问题：以后任何方式打开都会自动对齐线上最新代码 */
 (function checkVersion() {
@@ -1493,16 +1495,21 @@ const AudioSys = {
 
   /* 尝试加载单个音频文件（两个候选目录依次尝试，失败则标记缺失） */
   tryLoad(key, name) {
+    return this.tryLoadUrls(key, this.candidates(name));
+  },
+  /* 核心加载：依次尝试候选 URL，全部失败标记缺失 */
+  tryLoadUrls(key, urls) {
     return new Promise(resolve => {
-      const urls = this.candidates(name);
       let i = 0;
       const next = () => {
         if (i >= urls.length) {
           this.missing.add(key);
           console.warn('[音频] 未找到文件:', name, '→ 使用 Web Audio 合成音效占位');
-          try { window.__audioFail.push(name); } catch (e) {}
-          const d = $('audio-debug');
-          if (d) d.textContent = '⚠️ 音频加载失败（' + window.__audioFail.length + ' 个）：' + window.__audioFail.join('、');
+          if (!EXPECTED_MISSING.includes(key)) {   // 预期缺失的文件不算异常（本地同样合成）
+            try { window.__audioFail.push(name); } catch (e) {}
+            const d = $('audio-debug');
+            if (d) d.textContent = '⚠️ 音频加载失败（' + window.__audioFail.length + ' 个）：' + window.__audioFail.join('、');
+          }
           resolve(null);
           return;
         }
@@ -1530,6 +1537,25 @@ const AudioSys = {
       next();
     });
   },
+  /* 自愈重试：真实文件加载失败后，3 秒后带 ?cb= 参数重新请求
+     （绕过浏览器缓存可能存下的 404 响应——用户曾加载过旧版/构建中页面时浏览器会把 404 缓存下来） */
+  selfHeal() {
+    setTimeout(() => {
+      if (!this.missing.size) return;
+      for (const key of [...this.missing]) {
+        if (EXPECTED_MISSING.includes(key) || !CONFIG.audio.paths[key]) continue;
+        const busted = this.candidates(CONFIG.audio.paths[key][0]).map(u =>
+          u.indexOf('?') === -1 ? u + '?cb=' + Date.now() + Math.floor(Math.random() * 1000) : u);
+        this.tryLoadUrls(key, busted).then(el => {
+          if (el) {
+            this.missing.delete(key);
+            if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
+            else if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
+          }
+        });
+      }
+    }, 3000);
+  },
 
   /* 加载音频清单（分端）：
      桌面端：全量加载全部音频（恢复首次上线机制，保证任意场景 BGM 立即可播）
@@ -1548,6 +1574,7 @@ const AudioSys = {
     await Promise.all(jobs);
     // 菜单 BGM 若失败：10 秒后单独重试一次（首页常驻 BGM 保障）
     if (this.missing.has('menu')) setTimeout(() => this.retryBgm('menu'), 10000);
+    this.selfHeal();   // 自愈重试：真实失败文件 3 秒后带 ?cb= 绕过缓存重试
     if (this.missing.size) console.warn('[音频] 缺失文件清单（已用合成音效替代）:', [...this.missing].join(', '));
     // 加载完成后：在菜单界面立即尝试自动播放 BGM
     if (!this.unlocked && ['menu', 'guide', 'shop'].includes(S.state)) {
@@ -1584,10 +1611,12 @@ const AudioSys = {
       }
     }
   },
-  /* 重试单个缺失的 BGM（原版就绪后立即替换合成或接上暂存请求） */
+  /* 重试单个缺失的 BGM（原版就绪后立即替换合成或接上暂存请求；带 ?cb= 绕过缓存） */
   retryBgm(key) {
     if (!CONFIG.audio.bgmKeys.includes(key) || !CONFIG.audio.paths[key]) return;
-    this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
+    const busted = this.candidates(CONFIG.audio.paths[key][0]).map(u =>
+      u.indexOf('?') === -1 ? u + '?cb=' + Date.now() : u);
+    this.tryLoadUrls(key, busted).then(el => {
       if (el) {
         this.missing.delete(key);
         if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
