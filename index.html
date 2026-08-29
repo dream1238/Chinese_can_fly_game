@@ -553,6 +553,8 @@ html, body {
       </div>
       <div class="hint">ENTER 开始 · P 暂停 · 方向键/WASD 移动 · 空格/J 射击 · SHIFT 低速 · B 炸弹</div>
       <div class="hint" id="unlock-hint" style="display:none; color:#ffe66d">🔇 浏览器拦截了自动播放，点击任意位置开启声音</div>
+      <div class="hint" id="audio-debug" style="color:#ff3b5c"></div>
+      <div class="hint" style="font-size:.6em; opacity:.6">构建 v<span id="build-tag"></span></div>
     </div>
 
     <!-- 新手操作指引 -->
@@ -969,6 +971,11 @@ let rankCtx = rankCv.getContext('2d');
 
 /* ==================== 3. 工具函数 ==================== */
 const PI2 = Math.PI * 2;
+/* 构建版本标记（排查线上缓存问题用：首页显示 + 控制台打印） */
+const BUILD = '2026-08-30-b5f4214';
+console.log('[游戏] 构建版本:', BUILD);
+/* 音频加载失败记录（首页可视化报告，帮助排查线上音频问题） */
+window.__audioFail = [];
 const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 const rand  = (a, b) => a + Math.random() * (b - a);
 const randInt = (a, b) => Math.floor(rand(a, b + 1));
@@ -1468,6 +1475,9 @@ const AudioSys = {
         if (i >= urls.length) {
           this.missing.add(key);
           console.warn('[音频] 未找到文件:', name, '→ 使用 Web Audio 合成音效占位');
+          try { window.__audioFail.push(name); } catch (e) {}
+          const d = $('audio-debug');
+          if (d) d.textContent = '⚠️ 音频加载失败（' + window.__audioFail.length + ' 个）：' + window.__audioFail.join('、');
           resolve(null);
           return;
         }
@@ -4978,6 +4988,7 @@ function init() {
     setInterval(() => reportStat('online'), 30000);   // 在线心跳（30 秒）
   } else {
     $('menu-user').textContent = '👤 当前账号：' + S.currentUser;
+    $('build-tag').textContent = BUILD;
     showScreen('scr-menu');
     reportStat('visit');   // 访问人次上报（本地监测）
     setInterval(() => reportStat('online'), 30000);   // 在线心跳（30 秒）
