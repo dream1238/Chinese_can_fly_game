@@ -47,4 +47,5 @@
 - I can fly 高空飞行：每 10 秒 50% 概率进入 8 秒，无视敌机本体和障碍碰撞，碰到子弹仍受伤；期间切换专属 BGM。
 - 无尽模式：Boss 每 20 秒刷新、MV里的外星人障碍每 10 秒从屏幕边缘刷新（越飞越快）、血槽 5 格。
 - 浏览器自动播放策略会拦截有声自动播放：页面加载后**先尝试有声播放**，被拦截（Promise 拒绝）才降级为静音兜底并显示「🔇 点击任意位置开启声音」提示，首次任意交互时恢复。
-- **BGM 加载关键机制（务必保持）**：tryLoad 必须 `preload='auto'` + 显式 `a.load()`（**iOS 上不显式加载就不下载**，canplaythrough 永不触发 → 误判缺失 → 合成 BGM）+ `loadeddata`(readyState≥2) 补充成功信号 + 12s 超时；失败后**三重重试**（loadAll 完成后 8s/16s 自动重试 + unlock 交互时重试），重试成功且合成 BGM 正在播放该 key 时**立即切换原版**（startLoadedBgm 同步静音状态）。
+- **BGM 加载关键机制（务必保持）**：tryLoad 必须 `preload='auto'` + 显式 `a.load()`（**iOS 上不显式加载就不下载**，canplaythrough 永不触发 → 误判缺失 → 合成 BGM）+ `loadeddata`(readyState≥2) 补充成功信号 + 12s 超时。
+- **按需加载架构（防启动卡顿）**：loadAll **只立即加载音效（小文件）+ menu BGM**；关卡 BGM（bgm1/2/3）由 `playBGM` 按需即时加载（pending 暂存自动接上）+ `preloadLevelBgm(level)` 预加载（startRun 预载 bgm1、beginLevel 预载本关、nextLevel 预载下一关）；已加载不重复下载；menu 失败 10s 后单次重试；unlock 交互时 `retryBgm(key)` 重试全部缺失 BGM，成功且合成在播立即切换原版。

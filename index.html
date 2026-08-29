@@ -1431,15 +1431,7 @@ const AudioSys = {
     // 重试误判缺失的 BGM（手机慢网络首次 12s 超时误判 → 交互时网络更稳，重试一次恢复原版）
     if (this.missing.size) {
       for (const key of [...this.missing]) {
-        if (!CONFIG.audio.bgmKeys.includes(key) || !CONFIG.audio.paths[key]) continue;
-        this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
-          if (el) {
-            this.missing.delete(key);
-            // 原版已就绪：若正在播放该 key 的合成 BGM → 立即切换原版；若有暂存请求 → 接上
-            if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
-            else if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
-          }
-        });
+        if (CONFIG.audio.bgmKeys.includes(key)) this.retryBgm(key);
       }
     }
     // 解锁后：菜单界面确保 BGM 在播放（自动播放被拦截时此刻重新尝试）
@@ -1493,16 +1485,22 @@ const AudioSys = {
     });
   },
 
-  /* 加载全部音频清单 */
+  /* 加载音频清单（按需 + 优先级，避免启动时 16MB 并行下载卡顿）：
+     立即：全部音效（小文件）+ 菜单 BGM（首页即用）；
+     按需：关卡 BGM（bgm1/2/3）由 playBGM / 关卡预加载触发 */
   async loadAll() {
     const jobs = [];
-    for (const key in CONFIG.audio.paths)
+    for (const key in CONFIG.audio.paths) {
+      if (CONFIG.audio.bgmKeys.includes(key) && key !== 'menu') continue;   // 关卡 BGM 按需加载
       for (const name of CONFIG.audio.paths[key])
         jobs.push(this.tryLoad(key, name).then(el => {
           // BGM 文件加载完成时，若有等待播放的请求则立即接上
           if (el && key === this.pendingBgmKey && !this.currentBgm) this.startLoadedBgm(key, this.bgmLoop);
         }));
+    }
     await Promise.all(jobs);
+    // 菜单 BGM 若失败：10 秒后单独重试一次（首页常驻 BGM 保障）
+    if (this.missing.has('menu')) setTimeout(() => this.retryBgm('menu'), 10000);
     if (this.missing.size) console.warn('[音频] 缺失文件清单（已用合成音效替代）:', [...this.missing].join(', '));
     // 加载完成后：在菜单界面立即尝试自动播放 BGM
     if (!this.unlocked && ['menu', 'guide', 'shop'].includes(S.state)) {
@@ -1538,24 +1536,17 @@ const AudioSys = {
         }
       }
     }
-    // 终极保险：加载完成后若 BGM 仍缺失（慢网络），延迟自动重试 2 次（8s / 16s）
-    if (this.missing.size) {
-      for (let r = 0; r < 2; r++) {
-        setTimeout(() => {
-          if (!this.missing.size) return;
-          for (const key of [...this.missing]) {
-            if (!CONFIG.audio.bgmKeys.includes(key) || !CONFIG.audio.paths[key]) continue;
-            this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
-              if (el) {
-                this.missing.delete(key);
-                if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
-                else if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
-              }
-            });
-          }
-        }, 8000 * (r + 1));
+  },
+  /* 重试单个缺失的 BGM（原版就绪后立即替换合成或接上暂存请求） */
+  retryBgm(key) {
+    if (!CONFIG.audio.bgmKeys.includes(key) || !CONFIG.audio.paths[key]) return;
+    this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
+      if (el) {
+        this.missing.delete(key);
+        if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
+        else if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
       }
-    }
+    });
   },
 
   /* 播放音效（自动选择空闲的音频元素，缺失则合成） */
@@ -1571,7 +1562,8 @@ const AudioSys = {
     }
   },
 
-  /* BGM 控制（opts.loop=false 表示一次性播放，如高空飞行专属 BGM） */
+  /* BGM 控制（opts.loop=false 表示一次性播放，如高空飞行专属 BGM）
+     未加载的 BGM：立即按需加载（pending 暂存，加载完成自动接上），不阻塞场景切换 */
   playBGM(key, opts) {
     this.stopBGM();
     this.currentBgmKey = key;
@@ -1579,7 +1571,11 @@ const AudioSys = {
     const arr = this.loaded[key];
     if (arr && arr.length) this.startLoadedBgm(key, this.bgmLoop);
     else if (this.missing.has(key)) { SynthBGM.play(key); this.currentBgm = 'synth'; }
-    else this.pendingBgmKey = key;   // 还在加载中
+    else {
+      this.pendingBgmKey = key;   // 暂存，加载完成自动接上
+      if (CONFIG.audio.bgmKeys.includes(key) && CONFIG.audio.paths[key])
+        this.tryLoad(key, CONFIG.audio.paths[key][0]);   // 按需即时加载（iOS 显式 load 必需）
+    }
   },
   startLoadedBgm(key, loop) {
     const arr = this.loaded[key];
@@ -4029,9 +4025,17 @@ function showIntro() {
   renderIntroPreviews();
   showScreen('scr-intro');
 }
+/* 预加载指定关卡 BGM（介绍页停留期间下载，避免进入关卡后等待） */
+function preloadLevelBgm(level) {
+  if (level < 1 || level > 3) return;
+  const cfg = CONFIG.levels[level - 1];
+  if (!cfg || !cfg.bgm) return;
+  if (!AudioSys.loaded[cfg.bgm] && !AudioSys.missing.has(cfg.bgm)) AudioSys.tryLoad(cfg.bgm, CONFIG.audio.paths[cfg.bgm][0]);
+}
 /* 点击“了解”后正式进入关卡 / 无尽挑战 */
 function beginLevel() {
   S.state = 'playing';
+  preloadLevelBgm(S.mode === 'endless' ? 0 : S.level);   // 本关 BGM 预加载（无尽不需要）
   S.banner = { text: S.levelCfg.name, t: 1.6 };
   hideAllScreens();
   $('hud').classList.add('show');
@@ -4210,6 +4214,7 @@ function startRun() {
   S.enemies = []; S.pBullets = []; S.eBullets = []; S.powerups = []; S.particles = []; S.lasers = []; S.popups = []; S.aliens = [];
   S.boss = null; S.bossSpawned = false; S.bossCount = 0;
   S.levelCfg = CONFIG.levels[0];
+  preloadLevelBgm(1);   // 选择关卡模式即预加载第一关 BGM（介绍页停留期间下载）
   S.player.x = CONFIG.W / 2; S.player.y = CONFIG.H - 80;
   S.playerDead = false;
   S.levelTime = 0; S.spawnTimer = 1; S.endlessT = 0;
@@ -4278,6 +4283,7 @@ function nextLevel() {
   if (S.level >= 3) { showVictory(); return; }
   S.level++;
   S.state = 'intro';   // 先展示本关介绍界面，点击“了解”后正式进入关卡
+  preloadLevelBgm(S.level);   // 预加载本关 BGM（介绍页停留期间下载，进入关卡即原版有声）
   S.levelTime = 0; S.spawnTimer = 0.8;
   S.laserIdx = 0;   // 激光刷新序号重置
   S.levelRP = 0;    // 本关红包计数重置（结算“本关红包”只显示本关获得数）
