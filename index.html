@@ -111,11 +111,11 @@ html, body {
   box-shadow:0 0 16px rgba(255,59,92,.35) inset;
 }
 #btn-fire:active { background:rgba(255,59,92,.3); }
-#btn-bomb { right:6.5em; bottom:1.6em; width:3.4em; height:3.4em; font-size:.85em; }
+#btn-bomb { right:7.4em; bottom:1.5em; width:3.4em; height:3.4em; font-size:.85em; }
 #btn-pause { right:1em; top:4.6em; width:2.9em; height:2.9em; font-size:.8em; }
-/* 慢速按钮（摇杆上方，对应键盘 SHIFT 慢速） */
+/* 慢速按钮（摇杆上方留出充足间距，方便与摇杆二指同按；对应键盘 SHIFT 慢速） */
 #btn-slow {
-  left:2.6em; bottom:10.4em; width:4em; height:4em; font-size:.8em;
+  left:2.2em; bottom:12.6em; width:4em; height:4em; font-size:.8em;
   border-color:rgba(255,215,110,.75); color:#ffe66d;
   box-shadow:0 0 14px rgba(255,215,110,.3) inset;
 }
@@ -552,6 +552,7 @@ html, body {
         <button class="btn" data-action="backpack">🎒 背包</button>
       </div>
       <div class="hint">ENTER 开始 · P 暂停 · 方向键/WASD 移动 · 空格/J 射击 · SHIFT 低速 · B 炸弹</div>
+      <div class="hint" id="unlock-hint" style="display:none; color:#ffe66d">🔇 浏览器拦截了自动播放，点击任意位置开启声音</div>
     </div>
 
     <!-- 新手操作指引 -->
@@ -1072,12 +1073,23 @@ function importMigratedTo(user) {
 }
 /* 预置开发者账号 YH（密码 456789）——所有环境（本地/线上）均创建，
    保证开发者账号始终可用；旧版本数据存在时自动导入（importMigratedTo 内部自判） */
+/* YH 种子数据：仅全新环境首次创建账号时写入（各键不存在才写），使账号非空白可直接体验 */
+const YH_SEED = {
+  redPackets: 100,          // 初始红包（演示体验）
+  highScore: 0, highEndless: 0,
+  logGames: 0, logKills: 0, logSeconds: 0,
+};
 function ensureDevAccount() {
   const acc = getAccounts();
   if (!acc['YH']) {
     acc['YH'] = { pwd: hashPwd('YH', '456789'), created: Date.now(), dev: true };
     setAccounts(acc);
     importMigratedTo('YH');   // 旧数据导入 YH：刚登进去即完美还原
+    // 全新环境：写入种子数据（跳过已有键，不覆盖导入的旧数据）
+    for (const k in YH_SEED) {
+      const key = 'ccf_u_YH_' + k;
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify(YH_SEED[k]));
+    }
   }
 }
 /* 监测上报（本地监测服务 http://localhost:8765；远程/离线时静默失败不影响游戏） */
@@ -1416,6 +1428,18 @@ const AudioSys = {
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       this.unlocked = true;
     } catch (e) { return; }
+    // 重试误判缺失的 BGM（手机慢网络首次 12s 超时误判 → 交互时网络更稳，重试一次恢复原版）
+    if (this.missing.size) {
+      for (const key of [...this.missing]) {
+        if (!CONFIG.audio.bgmKeys.includes(key) || !CONFIG.audio.paths[key]) continue;
+        this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
+          if (el) {
+            this.missing.delete(key);
+            if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
+          }
+        });
+      }
+    }
     // 解锁后：菜单界面确保 BGM 在播放（自动播放被拦截时此刻重新尝试）
     this.ensureMenuBGM();
   },
@@ -1457,7 +1481,7 @@ const AudioSys = {
         const fail = () => { if (!done) { done = true; i++; next(); } };
         a.addEventListener('canplaythrough', ok, { once: true });
         a.addEventListener('error', fail, { once: true });
-        setTimeout(fail, 4000);   // 超时兜底
+        setTimeout(fail, 12000);   // 超时兜底（12 秒：手机慢网络下大 BGM 文件需要更久）
       };
       next();
     });
@@ -1481,8 +1505,19 @@ const AudioSys = {
       if (S.soundOn) {
         const el = this.loaded['menu'] && this.loaded['menu'][0];
         if (el && el.paused) {
-          el.muted = true;
-          try { el.play().catch(() => {}); } catch (e) {}
+          // 先尝试有声播放；被策略拦截（Promise 拒绝）才降级为静音兜底
+          el.muted = false;
+          let p = null;
+          try { p = el.play(); } catch (e) { p = null; }
+          const fallbackSilent = () => {
+            if (!el.paused) return;
+            el.muted = true;
+            try { el.play().catch(() => {}); } catch (e) {}
+            const h = $('unlock-hint'); if (h) h.style.display = '';
+          };
+          if (p && p.catch) p.catch(fallbackSilent);
+          else setTimeout(fallbackSilent, 300);
+          // 任意交互后：恢复有声 + 隐藏「点击开启声音」提示
           const once = () => {
             window.removeEventListener('pointerdown', once);
             window.removeEventListener('keydown', once);
@@ -1490,6 +1525,7 @@ const AudioSys = {
               el.muted = false;
               if (AudioSys.master) AudioSys.master.gain.value = 0.9;
             }
+            const h = $('unlock-hint'); if (h) h.style.display = 'none';
           };
           window.addEventListener('pointerdown', once);
           window.addEventListener('keydown', once);

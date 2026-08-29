@@ -6,7 +6,7 @@
 
 - **线上地址**：https://dream1238.github.io/Chinese_can_fly_game/ （仓库 dream1238/Chinese_can_fly_game，公开）
 - **登录流程**：未登录一律显示登录页；**无自动登录**（已移除 ccf_first_launch 自动登录 YH 逻辑）。
-- **开发者账号 YH（密码 456789）**：ensureDevAccount 在**所有环境**（本地/线上）无条件预置；旧版本数据存在时自动导入（importMigratedTo 键名按 CONFIG.storage 映射）。
+- **开发者账号 YH（密码 456789）**：ensureDevAccount 在**所有环境**（本地/线上）无条件预置；旧版本数据存在时自动导入（importMigratedTo 键名按 CONFIG.storage 映射）；**全新环境创建时写入种子数据 YH_SEED**（红包 100 等，键不存在才写、不覆盖已有数据）。
 - **音频资源**：全部位于游戏目录 `audio/` 子目录（含 BGM×4、音效×7、揽佬头像.jpeg、外星人.png），`CONFIG.audio.desktopDir = 'audio/'` 相对路径。缺失文件（shoot/explosion/boss mention/click）走合成音效。
 - **迁移键名 bug（已修）**：importMigratedTo 必须按 CONFIG.storage 映射回属性名写入 `ccf_u_<用户>_<属性名>`（旧实现拼成 `ccf_u_YH_ccf_redPackets` 永读不到）。
 - **手机端**：竖屏显示全屏「建议横屏游玩」遮罩（#orient-overlay，resize 时按宽高比切换）；矮屏（max-height 430px）界面保持垂直居中+可滚动防溢出。
@@ -46,4 +46,4 @@
 - 玩家受伤判定边界 = 中心圆形机舱（非机翼）。
 - I can fly 高空飞行：每 10 秒 50% 概率进入 8 秒，无视敌机本体和障碍碰撞，碰到子弹仍受伤；期间切换专属 BGM。
 - 无尽模式：Boss 每 20 秒刷新、MV里的外星人障碍每 10 秒从屏幕边缘刷新（越飞越快）、血槽 5 格。
-- 浏览器自动播放策略会拦截有声自动播放：页面加载后自动尝试，被拦截时静音播放并在首次交互恢复声音；如需打开即有声请用户在浏览器设置允许该站点自动播放。
+- 浏览器自动播放策略会拦截有声自动播放：页面加载后**先尝试有声播放**，被拦截（Promise 拒绝）才降级为静音兜底并显示「🔇 点击任意位置开启声音」提示，首次任意交互时恢复；**tryLoad 超时 12 秒**（手机慢网络大文件），**unlock() 时对误判缺失的 BGM 重试一次**（恢复原版 BGM，防合成占位）。
