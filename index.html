@@ -1396,7 +1396,13 @@ const S = {
 
 /* ==================== 5. 音频系统 ==================== */
 /* 说明：优先加载真实音频文件（游戏目录 → 桌面目录）。
-   文件缺失时自动使用 Web Audio API 合成音效占位，并在控制台输出提示。 */
+   文件缺失时自动使用 Web Audio API 合成音效占位，并在控制台输出提示。
+   分端策略（2026-08-29 确立，勿随意合并）：
+   - 桌面端（pointer:fine）：恢复首次上线版本机制——全量加载 + canplaythrough 判定 + 4s 超时
+     （桌面浏览器原生 preload=auto 自动下载，全量加载保证任意场景 BGM 立即可播）
+   - 移动端（pointer:coarse）：显式 load()（iOS 不显式加载就不下载）+ loadeddata 补充成功信号
+     + 12s 超时 + 按需加载（启动只载音效+菜单 BGM，关卡 BGM 由 playBGM/关卡预加载触发） */
+const IS_TOUCH = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
 const AudioSys = {
   ctx: null, master: null, sfxBus: null, bgmBus: null,
   noiseBuf: null,
@@ -1466,7 +1472,7 @@ const AudioSys = {
           return;
         }
         const a = new Audio(urls[i]);
-        a.preload = 'auto';   // 关键：iOS 上不显式加载就不下载，canplaythrough 永不触发 → 误判缺失
+        a.preload = 'auto';   // 桌面默认即 auto；iOS 需配合显式 load()（见下）
         let done = false;
         const ok = () => {
           if (done) return; done = true;
@@ -1476,22 +1482,26 @@ const AudioSys = {
         };
         const fail = () => { if (!done) { done = true; i++; next(); } };
         a.addEventListener('canplaythrough', ok, { once: true });
-        a.addEventListener('loadeddata', () => { if (a.readyState >= 2) ok(); }, { once: true });   // 数据已加载可播即视为成功（BGM 边下边播）
         a.addEventListener('error', fail, { once: true });
-        try { a.load(); } catch (e) {}   // 显式开始下载（iOS 必需）
-        setTimeout(fail, 12000);   // 超时兜底（12 秒：手机慢网络下大 BGM 文件需要更久）
+        if (IS_TOUCH) {
+          // 移动端：iOS 不显式加载就不下载，canplaythrough 永不触发 → 显式 load + loadeddata 补充成功信号
+          a.addEventListener('loadeddata', () => { if (a.readyState >= 2) ok(); }, { once: true });
+          try { a.load(); } catch (e) {}
+        }
+        setTimeout(fail, IS_TOUCH ? 12000 : 4000);   // 超时兜底：手机慢网络 12s；桌面恢复首次 4s
       };
       next();
     });
   },
 
-  /* 加载音频清单（按需 + 优先级，避免启动时 16MB 并行下载卡顿）：
-     立即：全部音效（小文件）+ 菜单 BGM（首页即用）；
-     按需：关卡 BGM（bgm1/2/3）由 playBGM / 关卡预加载触发 */
+  /* 加载音频清单（分端）：
+     桌面端：全量加载全部音频（恢复首次上线机制，保证任意场景 BGM 立即可播）
+     移动端：按需加载（启动只载音效+菜单 BGM，关卡 BGM 由 playBGM/关卡预加载触发，防启动卡顿） */
   async loadAll() {
     const jobs = [];
     for (const key in CONFIG.audio.paths) {
-      if (CONFIG.audio.bgmKeys.includes(key) && key !== 'menu') continue;   // 关卡 BGM 按需加载
+      // 移动端：关卡 BGM（bgm1/2/3）按需加载；桌面端全量加载（恢复首次上线机制）
+      if (IS_TOUCH && CONFIG.audio.bgmKeys.includes(key) && key !== 'menu') continue;
       for (const name of CONFIG.audio.paths[key])
         jobs.push(this.tryLoad(key, name).then(el => {
           // BGM 文件加载完成时，若有等待播放的请求则立即接上
@@ -1574,7 +1584,10 @@ const AudioSys = {
     else {
       this.pendingBgmKey = key;   // 暂存，加载完成自动接上
       if (CONFIG.audio.bgmKeys.includes(key) && CONFIG.audio.paths[key])
-        this.tryLoad(key, CONFIG.audio.paths[key][0]);   // 按需即时加载（iOS 显式 load 必需）
+        this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
+          // 按需加载完成 → 接上播放（此前缺失此 .then 导致关卡 BGM 加载完也不响）
+          if (el && key === this.pendingBgmKey && !this.currentBgm) this.startLoadedBgm(key, this.bgmLoop);
+        });
     }
   },
   startLoadedBgm(key, loop) {
