@@ -985,10 +985,22 @@ let rankCtx = rankCv.getContext('2d');
 /* ==================== 3. 工具函数 ==================== */
 const PI2 = Math.PI * 2;
 /* 构建版本标记（排查线上缓存问题用：首页显示 + 控制台打印） */
-const BUILD = '2026-08-30-b5f4214';
+const BUILD = '2026-08-30-60c5e89';
 console.log('[游戏] 构建版本:', BUILD);
 /* 音频加载失败记录（首页可视化报告，帮助排查线上音频问题） */
 window.__audioFail = [];
+/* 版本自检：fetch version.json（no-store 绕过缓存）→ 与 BUILD 不符 → 强制刷新到最新版
+   根治"浏览器/CDN 缓存旧版 index.html"问题：以后任何方式打开都会自动对齐线上最新代码 */
+(function checkVersion() {
+  try {
+    fetch('version.json', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      if (d && d.v && d.v !== BUILD) {
+        console.warn('[版本] 检测到线上新版本 ' + d.v + '（本地 ' + BUILD + '），强制刷新');
+        location.reload();
+      }
+    }).catch(() => {});
+  } catch (e) {}
+})();
 const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 const rand  = (a, b) => a + Math.random() * (b - a);
 const randInt = (a, b) => Math.floor(rand(a, b + 1));
