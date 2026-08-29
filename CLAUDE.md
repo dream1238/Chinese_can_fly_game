@@ -4,6 +4,7 @@
 
 ## 部署与登录（2026-08-25 更新）
 
+- **自动上线规则（仅本项目的专属规则，2026-08-29 用户确认）**：每次修改完成本游戏代码后，自动 `git commit` + `git push origin main` 上线（本地验证后），无需询问；代理不可用时提示用户开代理后继续。此规则**不适用于其他项目**。
 - **线上地址**：https://dream1238.github.io/Chinese_can_fly_game/ （仓库 dream1238/Chinese_can_fly_game，公开）
 - **登录流程**：未登录一律显示登录页；**无自动登录**（已移除 ccf_first_launch 自动登录 YH 逻辑）。
 - **开发者账号 YH（密码 456789）**：ensureDevAccount 在**所有环境**（本地/线上）无条件预置；旧版本数据存在时自动导入（importMigratedTo 键名按 CONFIG.storage 映射）；**全新环境创建时写入种子数据 YH_SEED**（红包 100 等，键不存在才写、不覆盖已有数据）。
