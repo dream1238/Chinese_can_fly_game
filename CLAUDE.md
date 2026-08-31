@@ -4,6 +4,13 @@
 
 > 📌 重要：音频问题三次修复失败的过程与反思见 [REFLECTION.md](REFLECTION.md)（2026-08-29），改音频前必读；分端策略（IS_TOUCH 桌面全量/移动端按需）勿随意合并。
 
+## 音频管理迁移计划（2026-08-31）
+
+- **audio.js**（已创建并引入）：统一音频管理模块（GameAudio）——unlock/playBGM(防叠放)/playSFX(缓存)/onRouteChange/pendingBgm(未解锁暂存)/全静默容错；已调研 Win/macOS/iOS/Android 浏览器音频限制策略（Android WebView WebAudio 可能 running 无输出 → 音效优先 HTML5 Audio 元素）。
+- **当前状态**：GameAudio 已接入（初始化/声音同步/交互解锁），与 AudioSys **过渡期并行**。
+- **迁移顺序（保守渐进）**：① play(44处)→GameAudio.playSFX ② playBGM(8处)→GameAudio.playBGM ③ unlock/stopBGM/pauseBGM ④ 删除 AudioSys 的 tryLoad 家族/selfHeal/retryBgm ⑤ 收尾。
+- **不可迁移保留**：setBGMRate（变身变速）、resumeBGM、SynthBGM、sfxTone/sfxNoise/synthSfx/sfxWing*/sfxRankUp（独有合成音效）、preloadLevelBgm、CONFIG.audio、诊断相关（audioDiag/__audioFail/EXPECTED_MISSING）。
+
 ## 部署与登录（2026-08-25 更新）
 
 - **自动上线规则（仅本项目的专属规则，2026-08-29 用户确认）**：每次修改完成本游戏代码后，自动 `git commit` + `git push origin main` 上线（本地验证后），无需询问；代理不可用时提示用户开代理后继续。此规则**不适用于其他项目**。

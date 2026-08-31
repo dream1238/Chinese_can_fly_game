@@ -774,6 +774,7 @@ html, body {
   <div class="orient-sub">请将手机旋转至横屏，获得最佳体验</div>
 </div>
 
+<script src="audio.js"></script>
 <script>
 'use strict';
 /* ==================================================================
@@ -1434,7 +1435,6 @@ const S = {
   spawnTimer: 1, warnT: 0, banner: null,
   flash: 0, shake: null, glitch: null, glitchNext: rand(CONFIG.effects.glitchEvery[0], CONFIG.effects.glitchEvery[1]),
   animT: 0, playerDead: false,
-  dragId: null, dragTarget: null,   // 旧触摸拖拽状态（已废弃，保留字段避免残留引用）
   stars: [], gridOffset: 0,
   avatar: null, avatarFailed: false,   // 揽佬头像（加载成功则作为英雄头像抠图显示）
   levelScoreStart: 0,                   // 本关开始时的累计分（用于结算本关得分）
@@ -1965,8 +1965,11 @@ $('btn-sound').addEventListener('click', e => {
   $('btn-sound').blur();
 });
 
-/* 任意用户交互：重试被 iOS 拒绝的 BGM 播放（手势内 play 才被允许） */
-window.addEventListener('pointerdown', () => AudioSys.retryPendingPlay(), { passive: true });
+/* 任意用户交互：解锁音频（GameAudio 统一入口；AudioSys 过渡期并行） + 重试被 iOS 拒绝的 BGM 播放 */
+window.addEventListener('pointerdown', () => {
+  if (window.GameAudio) GameAudio.unlock();
+  AudioSys.retryPendingPlay();
+}, { passive: true });
 /* 通用按钮动作（自动带点击音效） */
 document.addEventListener('click', e => {
   const btn = e.target.closest('[data-action]');
@@ -4970,6 +4973,7 @@ function applySound(on) {
 /* 点击声音开关：切换 ON/OFF，图标与拨杆联动 */
 function toggleSound() {
   applySound(!S.soundOn);
+  if (window.GameAudio) GameAudio.setSoundOn(S.soundOn);   // GameAudio 同步
   $('btn-sound').classList.toggle('off', !S.soundOn);
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
   audioDiag();
@@ -5119,6 +5123,7 @@ function init() {
   buildShopUI();           // 构建商店条目（装备 / 皮肤分类）
   buildBackpackUI();       // 构建背包条目
   applySound(S.soundOn);   // 同步初始声音开关状态
+  if (window.GameAudio) GameAudio.setSoundOn(S.soundOn);   // GameAudio 同步（audio.js 统一入口）
   $('btn-sound').classList.toggle('off', !S.soundOn);
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
   if (S.currentUser) updateMenuStats();   // 登录页不刷新菜单统计
