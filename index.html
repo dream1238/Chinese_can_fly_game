@@ -1466,6 +1466,7 @@ const AudioSys = {
     if (this.unlocked) return;
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      try { (window.__audioCtxs = window.__audioCtxs || []).push(this.ctx); } catch (e) {}   // 调试：ctx 实例注册
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});   // 确保音频上下文运行
       this.master = this.ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.9;
       this.master.connect(this.ctx.destination);
@@ -5137,6 +5138,64 @@ $('login-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') { e.pre
 $('login-eye').addEventListener('click', e => { e.preventDefault(); togglePwd(); });
 $('login-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('login-pwd').focus(); } });
 init();
+
+/* ============ 【临时调试】音频测试面板（仅 ?audiotest=1 时显示，测试完成后整段删除） ============ */
+(function () {
+  if (location.search.indexOf('audiotest=1') === -1) return;
+  var box = document.createElement('div');
+  box.id = 'audiotest-box';
+  box.style.cssText = 'position:fixed;top:8%;left:50%;transform:translateX(-50%);width:92%;max-width:520px;z-index:99999;background:rgba(5,8,20,.97);border:2px solid #7cfffb;border-radius:14px;padding:18px;font-family:monospace;color:#eaf6ff;';
+  box.innerHTML =
+    '<div style="font-size:20px;font-weight:bold;color:#7cfffb;margin-bottom:12px;text-align:center">🎧 音频测试面板（?audiotest=1）</div>' +
+    '<div id="at-result" style="font-size:15px;line-height:1.7;background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.3);border-radius:8px;padding:10px;margin-bottom:12px;min-height:60px;white-space:pre-wrap;word-break:break-all">结果区：依次点下方按钮测试</div>' +
+    row('A', '🎵 SynthBGM 合成', '单独调用 SynthBGM.play(&#39;menu&#39;)（Web Audio 合成 BGM，非文件）') +
+    row('B', '▶ playBGM 文件', '调用 AudioSys.playBGM(&#39;menu&#39;)（真实 mp3 文件）并显示 AudioContext.state') +
+    row('C', '🔍 ctx 实例数', '显示当前存在的 AudioContext 实例数及各自 state') +
+    row('D', '📖 成功判定逻辑', '显示 playBGM 的"成功"判定条件代码片段') +
+    '<div style="font-size:13px;color:#9fb4c8;text-align:center;margin-top:10px">每项点完请听声音，勾选下方「听到声音了吗？」</div>';
+  document.body.appendChild(box);
+
+  function row(id, label, desc) {
+    return '<div style="margin-bottom:10px;padding:10px;border:1px solid rgba(124,255,251,.35);border-radius:8px">' +
+      '<button id="at-' + id + '" style="width:100%;padding:14px 0;font-size:17px;font-family:monospace;background:rgba(0,229,255,.15);border:2px solid #7cfffb;color:#eaf6ff;border-radius:8px;cursor:pointer">' + label + '</button>' +
+      '<div style="font-size:12px;color:#9fb4c8;margin:6px 2px">' + desc + '</div>' +
+      '<div style="font-size:14px">听到声音了吗？ <label><input type="radio" name="at-' + id + '" value="y"> 是</label>　<label><input type="radio" name="at-' + id + '" value="n"> 否</label></div>' +
+      '</div>';
+  }
+  var res = function (t) {
+    var el = document.getElementById('at-result');
+    el.textContent = t;
+  };
+  document.getElementById('at-A').onclick = function () {
+    try {
+      SynthBGM.play('menu');
+      res('[A] 已调用 SynthBGM.play(\'menu\')。\n合成器在播（timer=' + (SynthBGM.timer ? '运行中' : '未运行') + '）。\n请听是否有声音，勾选 是/否。');
+    } catch (e) { res('[A] 调用出错: ' + e.message); }
+  };
+  document.getElementById('at-B').onclick = function () {
+    try {
+      AudioSys.unlock();
+      AudioSys.playBGM('menu');
+      res('[B] 已调用 AudioSys.playBGM(\'menu\')。\nAudioSys.ctx.state = ' + (AudioSys.ctx ? AudioSys.ctx.state : 'null') +
+        '\nGameAudio.ctx.state = ' + (window.GameAudio && GameAudio.ctx ? GameAudio.ctx.state : '惰性未创建') +
+        '\ncurrentBgm = ' + (AudioSys.currentBgm === 'synth' ? '合成' : (AudioSys.currentBgm ? '文件元素' : 'null')) +
+        '\nloaded[menu] = ' + (AudioSys.loaded['menu'] ? AudioSys.loaded['menu'].length : 0) + ' 个元素');
+    } catch (e) { res('[B] 调用出错: ' + e.message); }
+  };
+  document.getElementById('at-C').onclick = function () {
+    var arr = window.__audioCtxs || [];
+    if (!arr.length) { res('[C] 当前 AudioContext 实例数 = 0（尚无创建）'); return; }
+    var lines = arr.map(function (c, i) { return 'ctx#' + (i + 1) + ': state=' + c.state; });
+    res('[C] AudioContext 实例数 = ' + arr.length + '\n' + lines.join('\n'));
+  };
+  document.getElementById('at-D').onclick = function () {
+    res('[D] playBGM "成功"判定条件（真实代码逻辑）：\n\n' +
+      '1) loaded[key] 有元素（tryLoad 的 loadeddata/canplaythrough 事件触发 = 文件加载成功）→ startLoadedBgm 播放（HTML5 Audio 元素）\n' +
+      '2) 否则若 missing（文件加载失败）→ SynthBGM 合成兜底（Web Audio，安卓 WebView 可能无声）\n' +
+      '3) 否则 pendingBgmKey 暂存等待加载完成自动接上\n\n' +
+      '即："成功" = 文件加载成功，≠ 检测到真实声音输出。');
+  };
+})();
 </script>
 </body>
 </html>

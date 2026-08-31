@@ -125,6 +125,7 @@
         if (!AC) { this._err('ctx', 'no AudioContext'); return; }
         this.ctx = new AC();
         if (this.ctx.state === 'suspended') this.ctx.resume().catch(function () {});
+        try { (global.__audioCtxs = global.__audioCtxs || []).push(this.ctx); } catch (e) {}   // 调试：ctx 实例注册
         this.master = this.ctx.createGain();
         this.master.gain.value = this.muted ? 0 : 0.9;
         this.master.connect(this.ctx.destination);
@@ -159,13 +160,14 @@
     /* ---------------- 解锁（规格 2） ---------------- */
     unlock() {
       if (this.unlocked) return;
-      this._ensureCtx();
-      // iOS/WebView：必须手势内 resume（再补一次，确保状态）
+      // 注意：ctx 采用惰性创建（仅在真正需要 WebAudio 合成时 _ensureCtx），
+      // 避免与旧系统 AudioSys.ctx 双 AudioContext 并存（安卓 WebView 多 ctx 有隐患）。
+      // iOS/WebView：若已创建 ctx，确保在手势内 resume。
       try {
         if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(function () {});
       } catch (e) { this._err('resume', e); }
       this.unlocked = true;
-      this._diag('unlocked, ctx=' + (this.ctx ? this.ctx.state : 'none') + ', touch=' + (IS_TOUCH ? '是' : '否'));
+      this._diag('unlocked, ctx=' + (this.ctx ? this.ctx.state : 'lazy-none') + ', touch=' + (IS_TOUCH ? '是' : '否'));
       // 静音预热：打通 HTML5 Audio 通道（Android 微信/UC/夸克 WebView 常见必需）
       this._preheat();
       // 规格 6：补播未解锁时暂存的 BGM
