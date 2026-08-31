@@ -985,10 +985,22 @@ let rankCtx = rankCv.getContext('2d');
 /* ==================== 3. 工具函数 ==================== */
 const PI2 = Math.PI * 2;
 /* 构建版本标记（排查线上缓存问题用：首页显示 + 控制台打印） */
-const BUILD = '2026-08-30-v6';
+const BUILD = '2026-08-31-v7';
 console.log('[游戏] 构建版本:', BUILD);
 /* 音频加载失败记录（首页可视化报告，帮助排查线上音频问题） */
 window.__audioFail = [];
+/* 音频状态诊断（audio-debug 常驻显示：解锁状态 / AudioContext 状态 / 声音开关 / 失败报告） */
+function audioDiag() {
+  const d = $('audio-debug');
+  if (!d) return;
+  if (window.__audioFail.length) {
+    d.style.color = '#ff3b5c';
+    d.textContent = '⚠️ 音频加载失败（' + window.__audioFail.length + ' 个）：' + window.__audioFail.join('、');
+    return;
+  }
+  d.style.color = 'rgba(159,180,200,.8)';
+  d.textContent = '🎵 解锁:' + (AudioSys.unlocked ? '✓' : '✗') + ' | ctx:' + (AudioSys.ctx ? AudioSys.ctx.state : '未创建') + ' | 声音:' + (S.soundOn ? '开' : '关') + ' | ' + BUILD;
+}
 /* 预期缺失的音频（本地也没有文件，一直用合成音效，不属于异常）：不显示在失败报告、不参与自愈重试 */
 const EXPECTED_MISSING = ['shoot', 'explosion', 'bossAlarm', 'click'];
 /* 版本自检：fetch version.json（no-store 绕过缓存）→ 与 BUILD 不符 → 强制刷新到最新版
@@ -1476,7 +1488,9 @@ const AudioSys = {
     }
     // 解锁后：菜单界面确保 BGM 在播放（自动播放被拦截时此刻重新尝试）
     const h = $('unlock-hint'); if (h) h.style.display = 'none';   // 已交互，隐藏静音提示
+    this.retryPendingPlay();   // 重试被 iOS 拒绝的 BGM 播放（此时在用户手势内）
     this.ensureMenuBGM();
+    audioDiag();
   },
   /* 确保菜单 BGM 在播放：若 BGM 元素处于暂停（曾被自动播放策略拦截）则重新起播 */
   ensureMenuBGM() {
@@ -1495,10 +1509,10 @@ const AudioSys = {
 
   /* 尝试加载单个音频文件（两个候选目录依次尝试，失败则标记缺失） */
   tryLoad(key, name) {
-    return this.tryLoadUrls(key, this.candidates(name));
+    return this.tryLoadUrls(key, this.candidates(name), name);
   },
   /* 核心加载：依次尝试候选 URL，全部失败标记缺失 */
-  tryLoadUrls(key, urls) {
+  tryLoadUrls(key, urls, name) {
     return new Promise(resolve => {
       let i = 0;
       const next = () => {
@@ -1506,9 +1520,8 @@ const AudioSys = {
           this.missing.add(key);
           console.warn('[音频] 未找到文件:', name, '→ 使用 Web Audio 合成音效占位');
           if (!EXPECTED_MISSING.includes(key)) {   // 预期缺失的文件不算异常（本地同样合成）
-            try { window.__audioFail.push(name); } catch (e) {}
-            const d = $('audio-debug');
-            if (d) d.textContent = '⚠️ 音频加载失败（' + window.__audioFail.length + ' 个）：' + window.__audioFail.join('、');
+            try { if (window.__audioFail.indexOf(name) === -1) window.__audioFail.push(name); } catch (e) {}   // 去重记录
+            try { audioDiag(); } catch (e) {}
           }
           resolve(null);
           return;
@@ -1537,41 +1550,62 @@ const AudioSys = {
       next();
     });
   },
-  /* 自愈重试：真实文件加载失败后，3 秒后带 ?cb= 参数重新请求
-     （绕过浏览器缓存可能存下的 404 响应——用户曾加载过旧版/构建中页面时浏览器会把 404 缓存下来） */
+  /* 自愈重试（多轮静默）：真实文件加载失败后，逐文件带 ?cb= 参数重试
+     （绕过浏览器缓存可能存下的 404 响应——旧版/构建中页面会把 404 缓存下来；
+     CDN 抖动/连接中断也是常见原因，多轮重试显著提高恢复率）。
+     最多 4 轮（3s/6s/12s/24s），重试期间不打扰用户，全部结束后一次性报告仍失败的文件 */
   selfHeal() {
-    setTimeout(() => {
-      if (!this.missing.size) return;
-      for (const key of [...this.missing]) {
-        if (EXPECTED_MISSING.includes(key) || !CONFIG.audio.paths[key]) continue;
+    let round = 0;
+    const report = () => audioDiag();
+    const tryRound = () => {
+      round++;
+      const real = [...this.missing].filter(k => !EXPECTED_MISSING.includes(k) && CONFIG.audio.paths[k]);
+      if (!real.length) { report(); return; }
+      Promise.all(real.map(key => {
         const busted = this.candidates(CONFIG.audio.paths[key][0]).map(u =>
           u.indexOf('?') === -1 ? u + '?cb=' + Date.now() + Math.floor(Math.random() * 1000) : u);
-        this.tryLoadUrls(key, busted).then(el => {
+        return this.tryLoadUrls(key, busted).then(el => {
           if (el) {
             this.missing.delete(key);
+            const idx = window.__audioFail.indexOf(CONFIG.audio.paths[key][0]);
+            if (idx !== -1) window.__audioFail.splice(idx, 1);   // 恢复后从失败列表移除
             if (this.currentBgm === 'synth' && this.currentBgmKey === key) this.startLoadedBgm(key, this.bgmLoop);
             else if (!this.currentBgm && key === this.pendingBgmKey) this.startLoadedBgm(key, this.bgmLoop);
           }
         });
-      }
-    }, 3000);
+      })).then(() => {
+        const left = [...this.missing].filter(k => !EXPECTED_MISSING.includes(k) && CONFIG.audio.paths[k]);
+        if (left.length && round < 4) setTimeout(tryRound, 3000 * round);
+        else report();
+      });
+    };
+    setTimeout(tryRound, 3000);
   },
 
-  /* 加载音频清单（分端）：
-     桌面端：全量加载全部音频（恢复首次上线机制，保证任意场景 BGM 立即可播）
-     移动端：按需加载（启动只载音效+菜单 BGM，关卡 BGM 由 playBGM/关卡预加载触发，防启动卡顿） */
+  /* 加载音频清单（分端 + 队列分批）：
+     桌面端：全量加载全部音频（保证任意场景 BGM 立即可播）
+     移动端：按需加载（启动只载音效+菜单 BGM，关卡 BGM 由 playBGM/关卡预加载触发，防启动卡顿）
+     分批策略：每批 4 个顺序推进——16 个并发在 CDN 下部分连接会中断/超时（失败随机），
+     小批量并发显著提高成功率；loadeddata 数据可播即成功，边下边播 */
   async loadAll() {
-    const jobs = [];
+    const keys = [];
     for (const key in CONFIG.audio.paths) {
-      // 移动端：关卡 BGM（bgm1/2/3）按需加载；桌面端全量加载（恢复首次上线机制）
+      // 移动端：关卡 BGM（bgm1/2/3）按需加载；桌面端全量加载
       if (IS_TOUCH && CONFIG.audio.bgmKeys.includes(key) && key !== 'menu') continue;
-      for (const name of CONFIG.audio.paths[key])
-        jobs.push(this.tryLoad(key, name).then(el => {
-          // BGM 文件加载完成时，若有等待播放的请求则立即接上
-          if (el && key === this.pendingBgmKey && !this.currentBgm) this.startLoadedBgm(key, this.bgmLoop);
-        }));
+      keys.push(key);
     }
-    await Promise.all(jobs);
+    for (let i = 0; i < keys.length; i += 4) {
+      const batch = keys.slice(i, i + 4);
+      await Promise.all(batch.map(key => this.tryLoad(key, CONFIG.audio.paths[key][0]).then(el => {
+        // BGM 文件加载完成时，若有等待播放的请求则立即接上
+        if (el && key === this.pendingBgmKey && !this.currentBgm) this.startLoadedBgm(key, this.bgmLoop);
+      })));
+    }
+    // 未解锁（无任何交互）时：始终显示「点击开启声音」提示——手机端自动播放被拦截时
+    // 用户必须知道要点一下（否则 BGM 静音兜底/合成，看起来"完全没声"）
+    if (S.soundOn && !this.unlocked) {
+      const h = $('unlock-hint'); if (h) h.style.display = '';
+    }
     // 菜单 BGM 若失败：10 秒后单独重试一次（首页常驻 BGM 保障）
     if (this.missing.has('menu')) setTimeout(() => this.retryBgm('menu'), 10000);
     this.selfHeal();   // 自愈重试：真实失败文件 3 秒后带 ?cb= 绕过缓存重试
@@ -1628,6 +1662,7 @@ const AudioSys = {
   /* 播放音效（自动选择空闲的音频元素，缺失则合成） */
   play(key) {
     if (!this.unlocked) return;
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});   // iOS 切后台回来可能 suspended，播放前恢复
     const arr = this.loaded[key];
     if (arr && arr.length) {
       const el = arr.find(e => e.paused || e.ended) || arr[0];
@@ -1665,9 +1700,19 @@ const AudioSys = {
     el.muted = this.muted;   // 播放时遵循当前静音状态
     el.loop = loop !== false;
     el.playbackRate = 1;
-    try { el.currentTime = 0; el.play().catch(() => {}); } catch (e) {}
+    try { el.currentTime = 0; } catch (e) {}
+    const p = el.play();
+    // iOS：非手势时机的 play() 会被自动播放策略拒绝 → 挂起，下次用户手势（unlock/任意点击）时重试
+    if (p && p.catch) p.catch(() => { this.pendingPlay = el; });
     this.currentBgm = el;
     this.pendingBgmKey = null;
+  },
+  /* 手势重试被 iOS 拒绝的 BGM 播放（每次交互时调用） */
+  retryPendingPlay() {
+    if (!this.pendingPlay) return;
+    const el = this.pendingPlay; this.pendingPlay = null;
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    try { el.play().catch(() => { this.pendingPlay = el; }); } catch (e) {}
   },
   stopBGM() {
     if (this.currentBgm === 'synth') SynthBGM.stop();
@@ -1920,6 +1965,8 @@ $('btn-sound').addEventListener('click', e => {
   $('btn-sound').blur();
 });
 
+/* 任意用户交互：重试被 iOS 拒绝的 BGM 播放（手势内 play 才被允许） */
+window.addEventListener('pointerdown', () => AudioSys.retryPendingPlay(), { passive: true });
 /* 通用按钮动作（自动带点击音效） */
 document.addEventListener('click', e => {
   const btn = e.target.closest('[data-action]');
@@ -4698,8 +4745,8 @@ function buyItem(key) {
   S.totalRP -= cfg.price;
   storeSet(CONFIG.storage.redPackets, S.totalRP);
   itemOwnCount(key, 1);
-  // 购买音效：皮肤 click；紧急维修 大展宏图；其余装备 来财音效
-  const buySfx = { gold: 'click', silver: 'click', feather: 'click', repair: 'transform', firesupport: 'transform', timefield: 'transform', banner: 'redPacket', eight: 'redPacket', basin: 'redPacket' };
+  // 购买音效：皮肤 click；大变幡/紧急维修/火力支援/错乱时空 大展宏图；其余装备 来财音效
+  const buySfx = { gold: 'click', silver: 'click', feather: 'click', repair: 'transform', firesupport: 'transform', timefield: 'transform', banner: 'transform', eight: 'redPacket', basin: 'redPacket' };
   AudioSys.play(buySfx[key] || 'click');
   shopMsg('✅ 已购入' + cfg.name + '！可前往背包查看', '#3dffa2');
   updateShopUI();
@@ -4785,6 +4832,7 @@ function useEquip(key) {
     if (!S.artifactOwn || S.artifactUsed) { AudioSys.play('click'); return; }
     S.artifactUsed = 1;
     storeSet(CONFIG.storage.artifactUsed, 1);
+    AudioSys.play('transform');   // 大展宏图音效（与购买一致）
     el.textContent = '✅ 大变幡已使用：无尽模式「变身」掉落概率 5% → 10%（永久生效）';
   } else if (key === 'eight') {
     if (!S.eightOwn || S.eightUsed) { AudioSys.play('click'); return; }
@@ -4924,6 +4972,7 @@ function toggleSound() {
   applySound(!S.soundOn);
   $('btn-sound').classList.toggle('off', !S.soundOn);
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
+  audioDiag();
   if (S.soundOn) AudioSys.play('click');
 }
 /* 界面装饰元素随状态显隐：声音按钮（非战斗界面）/ 移动端按钮（战斗界面） */
@@ -5074,6 +5123,7 @@ function init() {
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
   if (S.currentUser) updateMenuStats();   // 登录页不刷新菜单统计
   resize();
+  audioDiag();   // 初始音频状态诊断
   requestAnimationFrame(loop);
 }
 /* 登录页输入框：Enter 按当前 Tab 模式提交 */
