@@ -125,7 +125,6 @@
         if (!AC) { this._err('ctx', 'no AudioContext'); return; }
         this.ctx = new AC();
         if (this.ctx.state === 'suspended') this.ctx.resume().catch(function () {});
-        try { (global.__audioCtxs = global.__audioCtxs || []).push(this.ctx); } catch (e) {}   // 调试：ctx 实例注册
         this.master = this.ctx.createGain();
         this.master.gain.value = this.muted ? 0 : 0.9;
         this.master.connect(this.ctx.destination);

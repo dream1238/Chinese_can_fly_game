@@ -1449,6 +1449,10 @@ const S = {
    - 移动端（pointer:coarse）：显式 load()（iOS 不显式加载就不下载）+ loadeddata 补充成功信号
      + 12s 超时 + 按需加载（启动只载音效+菜单 BGM，关卡 BGM 由 playBGM/关卡预加载触发） */
 const IS_TOUCH = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+/* 音频文件 URL（供 audio.js 的 GameAudio 使用：audio/ 相对目录，本地与线上通用） */
+function audioFileUrl(key) {
+  return CONFIG.audio.desktopDir + encodeURI(CONFIG.audio.paths[key][0]);
+}
 const AudioSys = {
   ctx: null, master: null, sfxBus: null, bgmBus: null,
   noiseBuf: null,
@@ -1466,7 +1470,6 @@ const AudioSys = {
     if (this.unlocked) return;
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-      try { (window.__audioCtxs = window.__audioCtxs || []).push(this.ctx); } catch (e) {}   // 调试：ctx 实例注册
       if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});   // 确保音频上下文运行
       this.master = this.ctx.createGain(); this.master.gain.value = this.muted ? 0 : 0.9;
       this.master.connect(this.ctx.destination);
@@ -1680,6 +1683,13 @@ const AudioSys = {
     this.stopBGM();
     this.currentBgmKey = key;
     this.bgmLoop = !opts || opts.loop !== false;
+    /* 试水②（BGM 迁移）：第一关 BGM 由 GameAudio（audio.js 统一通道）播放；已解锁才走（未解锁走原逻辑兜底） */
+    if (key === 'bgm1' && window.GameAudio && window.GameAudio.unlocked) {
+      window.GameAudio.playBGM(audioFileUrl('bgm1'), CONFIG.audio.bgmVolume);
+      this.currentBgm = 'gameaudio';
+      this.pendingBgmKey = null;
+      return;
+    }
     const arr = this.loaded[key];
     if (arr && arr.length) this.startLoadedBgm(key, this.bgmLoop);
     else if (this.missing.has(key)) { SynthBGM.play(key); this.currentBgm = 'synth'; }
@@ -1717,20 +1727,24 @@ const AudioSys = {
   },
   stopBGM() {
     if (this.currentBgm === 'synth') SynthBGM.stop();
+    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.stopBGM(); } catch (e) {} }   // 试水②：GameAudio 通道
     else if (this.currentBgm) { try { this.currentBgm.pause(); } catch (e) {} }
     this.currentBgm = null; this.currentBgmKey = null;
   },
   pauseBGM() {
     if (this.currentBgm === 'synth') SynthBGM.stop();
+    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.pauseBGM(); } catch (e) {} }   // 试水②
     else if (this.currentBgm) { try { this.currentBgm.pause(); } catch (e) {} }
   },
   resumeBGM() {
     if (this.currentBgm === 'synth') SynthBGM.play(this.currentBgmKey);
+    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.playBGM(audioFileUrl('bgm1'), CONFIG.audio.bgmVolume); } catch (e) {} }   // 试水②：同源重播即续播
     else if (this.currentBgm) { try { this.currentBgm.play().catch(() => {}); } catch (e) {} }
   },
   /* 变身时 BGM 2 倍速 */
   setBGMRate(r) {
     if (this.currentBgm === 'synth') SynthBGM.setRate(r);
+    else if (this.currentBgm === 'gameaudio') { try { if (window.GameAudio.bgmEl) window.GameAudio.bgmEl.playbackRate = r; } catch (e) {} }   // 试水②
     else if (this.currentBgm) { try { this.currentBgm.playbackRate = r; } catch (e) {} }
   },
 };
@@ -1968,7 +1982,7 @@ $('btn-sound').addEventListener('click', e => {
 
 /* 任意用户交互：解锁音频（GameAudio 统一入口；AudioSys 过渡期并行） + 重试被 iOS 拒绝的 BGM 播放 */
 window.addEventListener('pointerdown', () => {
-  if (window.GameAudio) GameAudio.unlock();
+  if (window.GameAudio) window.GameAudio.unlock();
   AudioSys.retryPendingPlay();
 }, { passive: true });
 /* 通用按钮动作（自动带点击音效） */
@@ -4751,7 +4765,9 @@ function buyItem(key) {
   itemOwnCount(key, 1);
   // 购买音效：皮肤 click；大变幡/紧急维修/火力支援/错乱时空 大展宏图；其余装备 来财音效
   const buySfx = { gold: 'click', silver: 'click', feather: 'click', repair: 'transform', firesupport: 'transform', timefield: 'transform', banner: 'transform', eight: 'redPacket', basin: 'redPacket' };
-  AudioSys.play(buySfx[key] || 'click');
+  /* 试水①（音效迁移）：大变幡购买音效走 GameAudio（audio.js 统一通道） */
+  if (key === 'banner' && window.GameAudio) window.GameAudio.playSFX(audioFileUrl('transform'), CONFIG.audio.sfxVolume);
+  else AudioSys.play(buySfx[key] || 'click');
   shopMsg('✅ 已购入' + cfg.name + '！可前往背包查看', '#3dffa2');
   updateShopUI();
   updateMenuStats();
@@ -4836,7 +4852,9 @@ function useEquip(key) {
     if (!S.artifactOwn || S.artifactUsed) { AudioSys.play('click'); return; }
     S.artifactUsed = 1;
     storeSet(CONFIG.storage.artifactUsed, 1);
-    AudioSys.play('transform');   // 大展宏图音效（与购买一致）
+    /* 试水①（音效迁移）：大变幡使用音效走 GameAudio */
+    if (window.GameAudio) window.GameAudio.playSFX(audioFileUrl('transform'), CONFIG.audio.sfxVolume);
+    else AudioSys.play('transform');   // 大展宏图音效（与购买一致）
     el.textContent = '✅ 大变幡已使用：无尽模式「变身」掉落概率 5% → 10%（永久生效）';
   } else if (key === 'eight') {
     if (!S.eightOwn || S.eightUsed) { AudioSys.play('click'); return; }
@@ -4974,7 +4992,7 @@ function applySound(on) {
 /* 点击声音开关：切换 ON/OFF，图标与拨杆联动 */
 function toggleSound() {
   applySound(!S.soundOn);
-  if (window.GameAudio) GameAudio.setSoundOn(S.soundOn);   // GameAudio 同步
+  if (window.GameAudio) window.GameAudio.setSoundOn(S.soundOn);   // GameAudio 同步
   $('btn-sound').classList.toggle('off', !S.soundOn);
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
   audioDiag();
@@ -5056,8 +5074,8 @@ function resize() {
   cv.width = Math.round(CONFIG.W * s * dpr);
   cv.height = Math.round(CONFIG.H * s * dpr);
   ctx.setTransform(cv.width / CONFIG.W, 0, 0, cv.height / CONFIG.H, 0, 0);
-  // 竖屏全屏遮罩：手机竖屏时引导横屏并拦截误触（PC 宽>高不触发）；audiotest 调试模式跳过（允许竖屏测试）
-  $('orient-overlay').classList.toggle('show', innerWidth < innerHeight && location.search.indexOf('audiotest=1') === -1);
+  // 竖屏全屏遮罩：手机竖屏时引导横屏并拦截误触（PC 宽>高不触发）
+  $('orient-overlay').classList.toggle('show', innerWidth < innerHeight);
   // 晋升动画顶层画布：全视口尺寸 + 逻辑坐标 → wrap CSS px → 视口 CSS px → 画布像素 变换
   // （顺序：scale(逻辑→wrap) → translate(wrap偏移→视口) → setTransform(css→物理像素)，矩阵右乘先应用）
   const dpr2 = Math.min(window.devicePixelRatio || 1, 2);
@@ -5124,7 +5142,7 @@ function init() {
   buildShopUI();           // 构建商店条目（装备 / 皮肤分类）
   buildBackpackUI();       // 构建背包条目
   applySound(S.soundOn);   // 同步初始声音开关状态
-  if (window.GameAudio) GameAudio.setSoundOn(S.soundOn);   // GameAudio 同步（audio.js 统一入口）
+  if (window.GameAudio) window.GameAudio.setSoundOn(S.soundOn);   // GameAudio 同步（audio.js 统一入口）
   $('btn-sound').classList.toggle('off', !S.soundOn);
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
   if (S.currentUser) updateMenuStats();   // 登录页不刷新菜单统计
@@ -5138,131 +5156,6 @@ $('login-pwd').addEventListener('keydown', e => { if (e.key === 'Enter') { e.pre
 $('login-eye').addEventListener('click', e => { e.preventDefault(); togglePwd(); });
 $('login-name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('login-pwd').focus(); } });
 init();
-
-/* ============ 【临时调试】音频测试面板 v2（仅 ?audiotest=1 时显示，测试完成后整段删除） ============ */
-(function () {
-  if (location.search.indexOf('audiotest=1') === -1) return;
-  var MENU_NAME = CONFIG.audio.paths.menu[0];
-  var MENU_URL = (AudioSys.candidates ? AudioSys.candidates(MENU_NAME)[1] : 'audio/' + encodeURI(MENU_NAME));
-  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
-  var $id = function (id) { return document.getElementById(id); };
-
-  var box = document.createElement('div');
-  box.id = 'at-box';
-  box.style.cssText = 'position:fixed;top:3%;left:50%;transform:translateX(-50%);width:95%;max-width:580px;max-height:92%;z-index:99999;display:flex;flex-direction:column;background:rgba(4,7,16,.98);border:2px solid #7cfffb;border-radius:14px;padding:10px;font-family:monospace;color:#eaf6ff;box-sizing:border-box;';
-  box.innerHTML =
-    '<div style="font-size:16px;font-weight:bold;color:#7cfffb;text-align:center;margin-bottom:6px">🎧 音频测试面板 v2（测试完即删）</div>' +
-    /* ---- B 状态常驻 ---- */
-    '<div id="at-status" style="font-size:12px;line-height:1.6;background:rgba(0,229,255,.07);border:1px solid rgba(0,229,255,.3);border-radius:6px;padding:5px 8px;margin-bottom:6px;white-space:pre-wrap;word-break:break-all"></div>' +
-    /* ---- C 自动诊断 ---- */
-    '<button id="at-auto" style="width:100%;padding:15px 0;font-size:17px;font-family:monospace;font-weight:bold;background:rgba(180,136,255,.22);border:2px solid #b388ff;color:#eaf6ff;border-radius:8px;cursor:pointer;margin-bottom:6px">▶ 自动诊断（unlock → playBGM → 再 playBGM，每步 1.5s）</button>' +
-    /* ---- 副按钮 ---- */
-    '<div style="display:flex;gap:5px;margin-bottom:6px">' +
-      '<button id="at-A" style="flex:1;padding:9px 0;font-size:13px;background:rgba(0,229,255,.12);border:1.5px solid #7cfffb;color:#eaf6ff;border-radius:6px;cursor:pointer">A 合成</button>' +
-      '<button id="at-B" style="flex:1;padding:9px 0;font-size:13px;background:rgba(0,229,255,.12);border:1.5px solid #7cfffb;color:#eaf6ff;border-radius:6px;cursor:pointer">B 文件</button>' +
-      '<button id="at-C" style="flex:1;padding:9px 0;font-size:13px;background:rgba(0,229,255,.12);border:1.5px solid #7cfffb;color:#eaf6ff;border-radius:6px;cursor:pointer">C ctx数</button>' +
-      '<button id="at-D" style="flex:1;padding:9px 0;font-size:13px;background:rgba(0,229,255,.12);border:1.5px solid #7cfffb;color:#eaf6ff;border-radius:6px;cursor:pointer">D 逻辑</button>' +
-    '</div>' +
-    /* ---- 结果区（可折叠+内部滚动） ---- */
-    '<div id="at-result-head" style="font-size:12px;color:#b388ff;cursor:pointer;padding:3px 2px;user-select:none">▾ 结果区（点击折叠/展开，内部可滚动）</div>' +
-    '<div id="at-result" style="font-size:11px;line-height:1.6;background:rgba(3,6,16,.85);border:1px solid rgba(180,136,255,.35);border-radius:6px;padding:5px 8px;min-height:50px;max-height:30vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all">结果区就绪。先点「自动诊断」，每步结束后听声音并记录。\n另：A/B/C/D 单项测试同可用。\n注意：每步「此处是否有声」请对照输出文字记录 是/否。</div>';
-  document.body.appendChild(box);
-
-  var collapsed = false;
-  $id('at-result-head').onclick = function () {
-    collapsed = !collapsed;
-    $id('at-result').style.display = collapsed ? 'none' : 'block';
-    $id('at-result-head').textContent = (collapsed ? '▸' : '▾') + ' 结果区（点击折叠/展开，内部可滚动）';
-  };
-  function log(t) {
-    var el = $id('at-result');
-    if (collapsed) { collapsed = false; el.style.display = 'block'; $id('at-result-head').textContent = '▾ 结果区（点击折叠/展开，内部可滚动）'; }
-    el.textContent += (el.textContent ? '\n' : '') + t;
-    el.scrollTop = el.scrollHeight;
-  }
-  function ctxStates() {
-    var out = [];
-    (window.__audioCtxs || []).forEach(function (c, i) { out.push('ctx#' + (i + 1) + '=' + c.state); });
-    return out.length ? out.join(' ') : 'ctx无';
-  }
-  function snapshot() {
-    var pend = [];
-    if (AudioSys.pendingBgmKey) pend.push('等加载:' + AudioSys.pendingBgmKey);
-    if (AudioSys.pendingPlay) pend.push('等手势');
-    if (window.GameAudio && GameAudio.pendingBgmSrc) pend.push('G待播');
-    return '解锁:' + (AudioSys.unlocked ? '✓' : '✗') + '(' + (window.GameAudio && GameAudio.unlocked ? 'G✓' : 'G✗') + ') | ' + ctxStates() +
-      ' | 当前BGM:' + (AudioSys.currentBgm === 'synth' ? '合成' : (AudioSys.currentBgm ? '文件' : '无')) +
-      ' | pending:' + (pend.length ? pend.join(',') : '空');
-  }
-  function refreshStatus() {
-    var el = $id('at-status');
-    if (!el) return;
-    el.textContent = '登录:' + (S.currentUser ? '已登录·' + S.currentUser : '未登录') + ' | ' + snapshot();
-  }
-  function fileInfo() {
-    return fetch(MENU_URL, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
-      var len = r.headers.get('Content-Length');
-      var el = AudioSys.loaded['menu'] && AudioSys.loaded['menu'][0];
-      return 'menu 文件: HTTP ' + r.status + (len ? ' | size ' + (len / 1048576).toFixed(1) + 'MB' : '') +
-        ' | 元素readyState:' + (el ? el.readyState : '-') + ' | duration:' + (el && el.duration ? el.duration.toFixed(0) + 's' : '-');
-    }).catch(function (e) { return 'menu 文件: fetch失败 ' + e.message; });
-  }
-
-  /* C：自动诊断 */
-  $id('at-auto').onclick = function () {
-    var btn = this; btn.disabled = true; btn.textContent = '诊断中…';
-    (async function () {
-      log('▶ 步骤1：unlock() —— 此处是否有声？（请听）');
-      if (window.GameAudio) GameAudio.unlock();
-      AudioSys.unlock();
-      await sleep(1500);
-      log('  「步骤1后」' + snapshot());
-      log('▶ 步骤2：playBGM(menu) —— 此处是否有声？（请听）');
-      AudioSys.playBGM('menu');
-      await sleep(1500);
-      log('  「步骤2后」' + snapshot());
-      log('  ' + await fileInfo());
-      log('▶ 步骤3：再次 playBGM(menu) —— 此处是否有声？（请听）');
-      AudioSys.playBGM('menu');
-      await sleep(1500);
-      log('  「步骤3后」' + snapshot());
-      log('✔ 自动诊断完成。请对照三步实际听感（有声/无声）记录反馈。');
-    })().then(function () { btn.disabled = false; btn.textContent = '▶ 自动诊断（unlock → playBGM → 再 playBGM，每步 1.5s）'; refreshStatus(); },
-      function () { btn.disabled = false; btn.textContent = '▶ 自动诊断（unlock → playBGM → 再 playBGM，每步 1.5s）'; refreshStatus(); });
-  };
-
-  /* A：单独 SynthBGM（连点多次验证幂等——每次 play 先 stop，timer 不叠加） */
-  $id('at-A').onclick = function () {
-    if (window.GameAudio) GameAudio.unlock();
-    AudioSys.unlock();   // 保证 ctx 已创建（SynthBGM 依赖 AudioSys.ctx）
-    SynthBGM.play('menu');
-    log('[A] 已调 SynthBGM.play(menu)。timer 实例: ' + (SynthBGM.timer ? '1个（幂等✓：play 前先 stop）' : '无') + ' —— 此处是否有声？（请听）');
-    log('  ' + snapshot());
-    refreshStatus();
-  };
-  /* B：playBGM 文件 */
-  $id('at-B').onclick = function () {
-    AudioSys.unlock();
-    AudioSys.playBGM('menu');
-    fileInfo().then(function (fi) {
-      log('[B] 已调 AudioSys.playBGM(menu)。' + snapshot() + ' —— 此处是否有声？（请听）');
-      log('  ' + fi);
-      refreshStatus();
-    });
-  };
-  /* C：ctx 数 */
-  $id('at-C').onclick = function () {
-    log('[C] ' + ctxStates());
-    refreshStatus();
-  };
-  /* D：判定逻辑 */
-  $id('at-D').onclick = function () {
-    log('[D] playBGM "成功"判定条件（真实代码逻辑）：\n1) loaded[key] 有元素（loadeddata/canplaythrough = 文件加载成功）→ HTML5 Audio 元素播放\n2) 否则 missing（文件加载失败）→ SynthBGM 合成兜底（WebAudio，安卓 WebView 可能无声）\n3) 否则 pendingBgmKey 暂存等待自动接上\n即："成功" = 文件加载成功，≠ 检测到真实声音输出。');
-  };
-
-  refreshStatus();
-  setInterval(refreshStatus, 800);
-})();
 </script>
 </body>
 </html>
