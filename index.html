@@ -821,8 +821,8 @@ const CONFIG = {
   },
   audio: {
     desktopDir: 'audio/',   // 音频资源目录（游戏目录下 audio/ 子目录，线上/本地通用）
-    bgmVolume: 0.35,                   // 背景音乐音量（低于音效）
-    sfxVolume: 0.6,                    // 音效音量
+    bgmVolume: 0.65,                   // 背景音乐音量（2026-09 手机实测反馈调高：0.35 在手机需满格才听见）
+    sfxVolume: 0.9,                    // 音效音量（同上调高）
     bgmKeys: ['menu', 'bgm1', 'bgm2', 'bgm3'],
     paths: {                           // 音频文件清单：文件名（先找游戏目录，再找桌面）
       menu:      ['中国人能飞 (梦核)-DJ Arliu（开始界面背景音乐）.mp3'],
@@ -1165,7 +1165,7 @@ function doLogin() {
   if (!name || !pwd) { loginMsg('⚠️ 请输入账户名和 6 位数字密码'); return; }
   const r = loginUser(name, pwd);
   if (!r.ok) { loginMsg('⚠️ ' + r.msg); return; }
-  AudioSys.play('click');
+  playSfx('click');
   location.reload();   // 重新加载：S 按该账号命名空间载入数据
 }
 function doRegister() {
@@ -1175,7 +1175,7 @@ function doRegister() {
   const r = registerUser(name, pwd);
   if (!r.ok) { loginMsg('⚠️ ' + r.msg); return; }
   setCurrentUser(name);   // 注册成功自动登录
-  AudioSys.play('redPacket');
+  playSfx('redPacket');
   location.reload();      // 新用户：命名空间为空 → 全新数据
 }
 /* 按当前 Tab 模式提交 */
@@ -1190,13 +1190,13 @@ function togglePwd() {
 }
 function doLogout() {
   if (!confirm('确定注销账户「' + (S.currentUser || '') + '」吗？\n将清除该账户的全部游玩数据（含账号与密码），不可恢复！')) return;
-  AudioSys.play('click');
+  playSfx('click');
   logoutUser();
   location.reload();   // 回到登录页
 }
 /* 退出登录：仅清除当前会话（数据保留），回到登录页可重新登录/切换账号 */
 function doSessionOut() {
-  AudioSys.play('click');
+  playSfx('click');
   localStorage.removeItem('ccf_current_user');
   location.reload();   // 回到登录页
 }
@@ -1453,6 +1453,16 @@ const IS_TOUCH = (window.matchMedia && window.matchMedia('(pointer: coarse)').ma
 function audioFileUrl(key) {
   return CONFIG.audio.desktopDir + encodeURI(CONFIG.audio.paths[key][0]);
 }
+/* 音效统一入口（2026-09 全量迁移）：有真实文件 → GameAudio（audio.js HTML5 Audio 通道，
+   解决安卓 WebView WebAudio 无输出问题）；文件缺失（如 shoot/explosion 等本就没有的）或未解锁
+   → 原 AudioSys 通道（含合成音效兜底）——两种通道行为一致、无缝降级 */
+function playSfx(key) {
+  if (window.GameAudio && window.GameAudio.unlocked && AudioSys.loaded[key]) {
+    window.GameAudio.playSFX(audioFileUrl(key), CONFIG.audio.sfxVolume);
+  } else {
+    AudioSys.play(key);
+  }
+}
 const AudioSys = {
   ctx: null, master: null, sfxBus: null, bgmBus: null,
   noiseBuf: null,
@@ -1683,9 +1693,12 @@ const AudioSys = {
     this.stopBGM();
     this.currentBgmKey = key;
     this.bgmLoop = !opts || opts.loop !== false;
-    /* 试水②（BGM 迁移）：第一关 BGM 由 GameAudio（audio.js 统一通道）播放；已解锁才走（未解锁走原逻辑兜底） */
-    if (key === 'bgm1' && window.GameAudio && window.GameAudio.unlocked) {
-      window.GameAudio.playBGM(audioFileUrl('bgm1'), CONFIG.audio.bgmVolume);
+    /* BGM 全量迁移（2026-09）：循环类 BGM（menu/bgm1/bgm2/bgm3）文件就绪且已解锁时走
+       GameAudio（audio.js HTML5 Audio 通道）；未解锁/文件缺失走原逻辑（含合成兜底）。
+       一次性播放的 highFly/timeStop 不迁移（GameAudio 规格为循环播放）。 */
+    if (CONFIG.audio.bgmKeys.includes(key) && key !== 'highFly' && key !== 'timeStop' &&
+        window.GameAudio && window.GameAudio.unlocked && this.loaded[key] && this.loaded[key].length) {
+      window.GameAudio.playBGM(audioFileUrl(key), CONFIG.audio.bgmVolume);
       this.currentBgm = 'gameaudio';
       this.pendingBgmKey = null;
       return;
@@ -1727,24 +1740,24 @@ const AudioSys = {
   },
   stopBGM() {
     if (this.currentBgm === 'synth') SynthBGM.stop();
-    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.stopBGM(); } catch (e) {} }   // 试水②：GameAudio 通道
+    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.stopBGM(); } catch (e) {} }   // GameAudio 通道
     else if (this.currentBgm) { try { this.currentBgm.pause(); } catch (e) {} }
     this.currentBgm = null; this.currentBgmKey = null;
   },
   pauseBGM() {
     if (this.currentBgm === 'synth') SynthBGM.stop();
-    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.pauseBGM(); } catch (e) {} }   // 试水②
+    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.pauseBGM(); } catch (e) {} }   // GameAudio 通道
     else if (this.currentBgm) { try { this.currentBgm.pause(); } catch (e) {} }
   },
   resumeBGM() {
     if (this.currentBgm === 'synth') SynthBGM.play(this.currentBgmKey);
-    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.playBGM(audioFileUrl('bgm1'), CONFIG.audio.bgmVolume); } catch (e) {} }   // 试水②：同源重播即续播
+    else if (this.currentBgm === 'gameaudio') { try { window.GameAudio.playBGM(audioFileUrl(this.currentBgmKey), CONFIG.audio.bgmVolume); } catch (e) {} }   // 同源重播即续播
     else if (this.currentBgm) { try { this.currentBgm.play().catch(() => {}); } catch (e) {} }
   },
   /* 变身时 BGM 2 倍速 */
   setBGMRate(r) {
     if (this.currentBgm === 'synth') SynthBGM.setRate(r);
-    else if (this.currentBgm === 'gameaudio') { try { if (window.GameAudio.bgmEl) window.GameAudio.bgmEl.playbackRate = r; } catch (e) {} }   // 试水②
+    else if (this.currentBgm === 'gameaudio') { try { if (window.GameAudio.bgmEl) window.GameAudio.bgmEl.playbackRate = r; } catch (e) {} }   // GameAudio 通道
     else if (this.currentBgm) { try { this.currentBgm.playbackRate = r; } catch (e) {} }
   },
 };
@@ -1994,7 +2007,7 @@ document.addEventListener('click', e => {
   const act = btn.dataset.action;
   // 音效：常规按钮统一 click；购买/使用类按钮由各自分支播放专属音效（避免双音叠加造成音量忽大忽小）
   const ownSound = ['buy-banner', 'buy-eight', 'buy-basin', 'buy-repair', 'buy-firesupport', 'buy-timefield', 'buy-gold', 'buy-silver', 'buy-feather', 'use-banner', 'use-eight', 'use-basin', 'use-repair', 'use-firesupport', 'use-timefield', 'use-classic', 'use-gold', 'use-silver', 'use-feather', 'unequip-banner', 'unequip-eight', 'unequip-basin', 'unequip-repair', 'unequip-firesupport', 'unequip-timefield'];
-  if (!ownSound.includes(act)) AudioSys.play('click');
+  if (!ownSound.includes(act)) playSfx('click');
   switch (act) {
     case 'start':       if (S.state === 'menu') startGame(); else if (S.state === 'guide') openModeSelect(); break;
     case 'guide':       if (S.state === 'menu') openGuide(); break;
@@ -2110,7 +2123,7 @@ function spawnBoss() {
   S.warnT = 2.5;
   wrap.classList.add('danger');
   setTimeout(() => wrap.classList.remove('danger'), 2200);
-  AudioSys.play('bossAlarm');
+  playSfx('bossAlarm');
   $('bossbar').classList.add('show');
   $('bossbar-label').textContent = S.mode === 'endless' ? `⚠ BOSS ×${S.bossCount} ⚠` : '⚠ BOSS · 几何核心 ⚠';
 }
@@ -2211,10 +2224,10 @@ function firePlayer() {
   const P = S.player, tr = S.transformT > 0;
   if (tr) {
     [-16, 0, 16].forEach(off => S.pBullets.push({ x: P.x + off, y: P.y - 26, vx: 0, vy: -CONFIG.bullet.playerSpeed - 60, r: 8, dmg: CONFIG.bullet.transformDamage, color: CONFIG.colors.redLight }));
-    AudioSys.play('shoot2');   // 揽佬音效
+    playSfx('shoot2');   // 揽佬音效
   } else {
     [-8, 8].forEach(off => S.pBullets.push({ x: P.x + off, y: P.y - 26, vx: 0, vy: -CONFIG.bullet.playerSpeed, r: 4.5, dmg: CONFIG.bullet.damage, color: CONFIG.colors.neonBlue }));
-    AudioSys.play('shoot');
+    playSfx('shoot');
   }
 }
 /* 玩家受击（护盾优先抵挡一次伤害）；返回是否阵亡，便于碰撞循环立即中止 */
@@ -2226,14 +2239,14 @@ function hitPlayer() {
     S.invincibleT = CONFIG.player.invincibleTime;
     explosion(S.player.x, S.player.y, 0.8, [CONFIG.colors.cyan]);
     popup(S.player.x, S.player.y - 30, '护盾抵挡!', CONFIG.colors.cyan);
-    AudioSys.play('click');
+    playSfx('click');
     return false;
   }
   S.lives--; S.deaths++;
   S.invincibleT = CONFIG.player.invincibleTime;
   S.shake = { t: 0.35, p: CONFIG.effects.shakePower };
   explosion(S.player.x, S.player.y, 1.4);
-  AudioSys.play('explosion');
+  playSfx('explosion');
   if (S.lives <= 0) {
     // 紧急维修（一次性）：被击毁时恢复 1 点生命并无敌 3 秒（一局仅一次；关卡/无尽模式通用）
     if (tryEmergencyRepair()) return false;   // 复活成功：立即中止本帧剩余碰撞判定
@@ -2307,7 +2320,7 @@ function eliteFan(e) {
     const a = Math.PI / 2 + tilt + i * 0.24;
     S.eBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * CONFIG.bullet.enemyFanSpeed, vy: Math.sin(a) * CONFIG.bullet.enemyFanSpeed, r: 5.5, color: CONFIG.colors.neonPurple, life: 9 });
   }
-  AudioSys.play('shoot');
+  playSfx('shoot');
 }
 
 /* ---------- 无尽模式专属逻辑 ---------- */
@@ -2394,7 +2407,7 @@ function tryCastFireSupport() {
   S.fireSupportT = CONFIG.fireSupport.duration;
   S.wingmanFireCd = 0.3;
   S.wingmen = [{ side: -1, fade: 0, fading: false }, { side: 1, fade: 0, fading: false }];
-  AudioSys.play('transform');   // 大展宏图
+  playSfx('transform');   // 大展宏图
   sfxWingFadeIn();              // 渐显音效
   popup(S.player.x, S.player.y - 40, '火力支援！', CONFIG.colors.neonBlue);
 }
@@ -2529,7 +2542,7 @@ function updateBoss(dt) {
       const a = off + Math.PI / n + i * PI2 / n;
       S.eBullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * CONFIG.bullet.bossRingSpeed, vy: Math.sin(a) * CONFIG.bullet.bossRingSpeed, r: 6, color: CONFIG.colors.neonPurple, life: 9 });
     }
-    AudioSys.play('shoot');
+    playSfx('shoot');
   }
   // 瞄准弹
   b.aimCd -= dt;
@@ -2657,11 +2670,11 @@ function killEnemy(e, giveScore = true) {
       S.redPacketsRun += bonus; S.levelRP += bonus; S.totalRP += bonus;   // 红包按实际数量计入（HUD 右上角显示 +5）
       storeSet(CONFIG.storage.redPackets, S.totalRP);
       popup(e.x, e.y - 24, '金飞机 +' + bonus + ' 🧧', CONFIG.colors.yellow);
-      AudioSys.play('redPacket');
+      playSfx('redPacket');
     }
   }
   maybeDrop(e.x, e.y);
-  AudioSys.play('explosion');
+  playSfx('explosion');
 }
 
 /* 碰撞检测（圆形碰撞 + 线段距离） */
@@ -2735,25 +2748,25 @@ function applyPowerup(type) {
     case 'bomb':
       S.bombs = Math.min(S.bombs + 1, 9);
       popup(S.player.x, S.player.y - 30, '炸弹 +1', CONFIG.colors.yellow);
-      AudioSys.play('click');
+      playSfx('click');
       break;
     case 'shield':
       S.shields = Math.min(S.shields + 1, 3);
       popup(S.player.x, S.player.y - 30, '护盾 +1', CONFIG.colors.cyan);
-      AudioSys.play('click');
+      playSfx('click');
       break;
     case 'redpacket':
       S.redPacketsRun++; S.levelRP++; S.totalRP++;
       storeSet(CONFIG.storage.redPackets, S.totalRP);   // 红包计入总数并持久化
       popup(S.player.x, S.player.y - 30, '🧧 红包 +1', CONFIG.colors.yellow);
-      AudioSys.play('redPacket');   // 来财音效
+      playSfx('redPacket');   // 来财音效
       break;
     case 'transform':
       S.transformT = Math.min(S.transformT + CONFIG.powerups.transformDuration, 20);
       if (S.transformT > 0 && S.transformT <= CONFIG.powerups.transformDuration) AudioSys.setBGMRate(2);  // 首次进入变身 → BGM 2 倍速
       popup(S.player.x, S.player.y - 30, '变身！', CONFIG.colors.red);
       S.flash = Math.max(S.flash, 0.18);
-      AudioSys.play('transform');   // 大展宏图音效
+      playSfx('transform');   // 大展宏图音效
       break;
   }
 }
@@ -2764,7 +2777,7 @@ function useBomb() {
   S.bombs--;
   S.flash = 0.35;
   S.shake = { t: 0.4, p: 9 };
-  AudioSys.play('explosion');
+  playSfx('explosion');
   for (const b of S.eBullets) explosion(b.x, b.y, 0.4);
   S.eBullets = [];
   for (let i = S.enemies.length - 1; i >= 0; i--) {
@@ -2831,7 +2844,7 @@ function updateWinLoseAnim(dt) {
       S.playerDead = true;
       explosion(S.player.x, S.player.y, 2.6, ['#ff3b5c', '#ff9f43', '#ffe66d', '#eaf6ff']);
       S.shake = { t: 0.5, p: 11 };
-      AudioSys.play('explosion');
+      playSfx('explosion');
     }
     if (S.animT > 1.5) showGameOver();
   }
@@ -4453,7 +4466,7 @@ function nextLevel() {
 /* 过关结算界面（注意：关卡间的通关过渡不是挑战结束，紧急维修跨关继续生效） */
 function showClearScreen() {
   S.state = 'clearScreen';
-  AudioSys.play('victory');   // 统一过关结算音效
+  playSfx('victory');   // 统一过关结算音效
   // 段位条件记录：历史已通关第 2 / 3 关
   if (S.level >= 2 && !S.clearedL2) { S.clearedL2 = 1; storeSet(CONFIG.storage.clearedL2, 1); }
   if (S.level >= 3 && !S.clearedL3) { S.clearedL3 = 1; storeSet(CONFIG.storage.clearedL3, 1); }
@@ -4480,7 +4493,7 @@ function showClearScreen() {
 function showGameOver() {
   consumeRepair();   // 阵亡视为本次挑战结束：紧急维修失效（需重新装备）
   S.state = 'gameover';
-  AudioSys.play('defeat');   // 统一失败结算音效
+  playSfx('defeat');   // 统一失败结算音效
   $('over-basin-row').style.display = 'none';   // 默认隐藏聚宝盆行（仅无尽模式按需显示）
   $('over-rank-row').style.display = 'none';    // 默认隐藏段位晋升行
   $('over-daily-row').style.display = 'none';   // 默认隐藏今日/昨日行
@@ -4741,22 +4754,22 @@ function buyItem(key) {
   if (cfg.maxBuy > 0 && itemOwnCount(key) >= cfg.maxBuy) return;
   // 段位限制：I can fly 需中尉及以上（rank ≥ 2）；火力支援需上尉及以上（rank ≥ 3）
   if (key === 'feather' && currentRankIndex() < 2) {
-    AudioSys.play('click');
+    playSfx('click');
     shopMsg('🔒 I can fly 需要 中尉 及以上段位才能购买（当前段位：' + CONFIG.ranks[currentRankIndex()].name + '）');
     return;
   }
   if (key === 'firesupport' && currentRankIndex() < 3) {
-    AudioSys.play('click');
+    playSfx('click');
     shopMsg('🔒 火力支援 需要 上尉 及以上段位才能购买（当前段位：' + CONFIG.ranks[currentRankIndex()].name + '）');
     return;
   }
   if (key === 'timefield' && currentRankIndex() < 4) {
-    AudioSys.play('click');
+    playSfx('click');
     shopMsg('🔒 错乱时空 需要 王牌机长 及以上段位才能购买（当前段位：' + CONFIG.ranks[currentRankIndex()].name + '）');
     return;
   }
   if (S.totalRP < cfg.price) {
-    AudioSys.play('click');   // 购买失败反馈音
+    playSfx('click');   // 购买失败反馈音
     shopMsg('🧧 红包不足，还需要 ' + (cfg.price - S.totalRP) + ' 个');
     return;
   }
@@ -4765,9 +4778,7 @@ function buyItem(key) {
   itemOwnCount(key, 1);
   // 购买音效：皮肤 click；大变幡/紧急维修/火力支援/错乱时空 大展宏图；其余装备 来财音效
   const buySfx = { gold: 'click', silver: 'click', feather: 'click', repair: 'transform', firesupport: 'transform', timefield: 'transform', banner: 'transform', eight: 'redPacket', basin: 'redPacket' };
-  /* 试水①（音效迁移）：大变幡购买音效走 GameAudio（audio.js 统一通道） */
-  if (key === 'banner' && window.GameAudio) window.GameAudio.playSFX(audioFileUrl('transform'), CONFIG.audio.sfxVolume);
-  else AudioSys.play(buySfx[key] || 'click');
+  playSfx(buySfx[key] || 'click');   // 统一入口：有真实文件走 GameAudio 通道，缺失走合成兜底
   shopMsg('✅ 已购入' + cfg.name + '！可前往背包查看', '#3dffa2');
   updateShopUI();
   updateMenuStats();
@@ -4849,48 +4860,46 @@ function updateBackpackUI() {
 function useEquip(key) {
   const el = $('bp-msg');
   if (key === 'banner') {
-    if (!S.artifactOwn || S.artifactUsed) { AudioSys.play('click'); return; }
+    if (!S.artifactOwn || S.artifactUsed) { playSfx('click'); return; }
     S.artifactUsed = 1;
     storeSet(CONFIG.storage.artifactUsed, 1);
-    /* 试水①（音效迁移）：大变幡使用音效走 GameAudio */
-    if (window.GameAudio) window.GameAudio.playSFX(audioFileUrl('transform'), CONFIG.audio.sfxVolume);
-    else AudioSys.play('transform');   // 大展宏图音效（与购买一致）
+    playSfx('transform');   // 大展宏图音效（与购买一致，统一入口）
     el.textContent = '✅ 大变幡已使用：无尽模式「变身」掉落概率 5% → 10%（永久生效）';
   } else if (key === 'eight') {
-    if (!S.eightOwn || S.eightUsed) { AudioSys.play('click'); return; }
+    if (!S.eightOwn || S.eightUsed) { playSfx('click'); return; }
     S.eightUsed = 1;
     storeSet(CONFIG.storage.eightUsed, 1);
     el.textContent = '✅ 八方来财已使用：关卡模式全部通关结算红包 +8（永久生效）';
   } else if (key === 'basin') {
-    if (S.basinCount <= 0) { AudioSys.play('click'); el.textContent = '未拥有聚宝盆，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
-    if (S.basinActive) { AudioSys.play('click'); el.textContent = '聚宝盆已生效中，将在下一次无尽模式结算时耗尽'; el.style.color = '#ff8fa3'; return; }
+    if (S.basinCount <= 0) { playSfx('click'); el.textContent = '未拥有聚宝盆，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    if (S.basinActive) { playSfx('click'); el.textContent = '聚宝盆已生效中，将在下一次无尽模式结算时耗尽'; el.style.color = '#ff8fa3'; return; }
     S.basinCount -= 1;
     storeSet(CONFIG.storage.basinCount, S.basinCount);
     S.basinActive = 1;
     storeSet(CONFIG.storage.basinActive, 1);
     el.textContent = '✅ 聚宝盆已激活：下一次无尽模式红包掉落概率 88%（该次结束失效）';
   } else if (key === 'repair') {
-    if (S.repairCount <= 0) { AudioSys.play('click'); el.textContent = '未拥有紧急维修，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
-    if (S.repairActive) { AudioSys.play('click'); el.textContent = '紧急维修已生效中（下一次挑战被击毁时触发）'; el.style.color = '#ff8fa3'; return; }
+    if (S.repairCount <= 0) { playSfx('click'); el.textContent = '未拥有紧急维修，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    if (S.repairActive) { playSfx('click'); el.textContent = '紧急维修已生效中（下一次挑战被击毁时触发）'; el.style.color = '#ff8fa3'; return; }
     S.repairCount -= 1;
     storeSet(CONFIG.storage.repairCount, S.repairCount);
     S.repairActive = 1;
     storeSet(CONFIG.storage.repairActive, 1);
     el.textContent = '✅ 紧急维修已激活：下一次挑战被击毁时恢复 1 点生命并无敌 3 秒（一局仅一次）';
   } else if (key === 'firesupport') {
-    if (!S.fireSupportOwn || S.fireSupportUsed) { AudioSys.play('click'); el.textContent = '未拥有火力支援，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    if (!S.fireSupportOwn || S.fireSupportUsed) { playSfx('click'); el.textContent = '未拥有火力支援，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
     S.fireSupportUsed = 1;
     storeSet(CONFIG.storage.fireSupportUsed, 1);
     el.textContent = '✅ 火力支援已启用：对局中按 M 键召唤伴生僚机（10 秒生效，8 秒冷却）';
   } else if (key === 'timefield') {
-    if (!S.timeFieldOwn || S.timeFieldUsed) { AudioSys.play('click'); el.textContent = '未拥有错乱时空，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
+    if (!S.timeFieldOwn || S.timeFieldUsed) { playSfx('click'); el.textContent = '未拥有错乱时空，请先到商店购买'; el.style.color = '#ff8fa3'; return; }
     S.timeFieldUsed = 1;
     storeSet(CONFIG.storage.timeFieldUsed, 1);
     el.textContent = '✅ 错乱时空已启用：每 12 秒 66% 概率触发时空静止 6 秒（世界冻结，我方正常）';
   }
   el.style.color = '#3dffa2';
   // 使用音效：紧急维修/大变幡/火力支援/错乱时空 大展宏图；八方来财/聚宝盆 来财音效
-  AudioSys.play(['repair', 'banner', 'firesupport', 'timefield'].includes(key) ? 'transform' : 'redPacket');
+  playSfx(['repair', 'banner', 'firesupport', 'timefield'].includes(key) ? 'transform' : 'redPacket');
   updateBackpackUI();
   updateShopUI();
 }
@@ -4912,7 +4921,7 @@ function tryEmergencyRepair() {
   S.playerDead = false;
   explosion(S.player.x, S.player.y, 1.2, [CONFIG.colors.green]);
   popup(S.player.x, S.player.y - 40, '紧急维修！生命+1', CONFIG.colors.green);
-  AudioSys.play('transform');
+  playSfx('transform');
   console.info('[装备] 紧急维修触发：生命+1，无敌 3 秒（' + S.mode + ' 模式）');
   return true;
 }
@@ -4962,18 +4971,18 @@ function unequipItem(key) {
     el.textContent = '✅ 已卸下错乱时空：时空静止领域取消，可再次使用';
   } else return;
   el.style.color = '#3dffa2';
-  AudioSys.play('click');
+  playSfx('click');
   updateBackpackUI();
   updateShopUI();
 }
 /* 装备皮肤（classic / gold / silver / feather），原皮肤始终保留可换回 */
 function equipSkin(name) {
   const ownMap = { gold: 'skinOwn', silver: 'silverOwn', feather: 'featherOwn' };
-  if (name !== 'classic' && (!S[ownMap[name]] || S.skin === name)) { AudioSys.play('click'); return; }
-  if (name === 'classic' && S.skin === 'classic') { AudioSys.play('click'); return; }
+  if (name !== 'classic' && (!S[ownMap[name]] || S.skin === name)) { playSfx('click'); return; }
+  if (name === 'classic' && S.skin === 'classic') { playSfx('click'); return; }
   S.skin = name;
   storeSet(CONFIG.storage.skinEquipped, name);
-  AudioSys.play('click');   // 皮肤换装：使用常规按钮音效
+  playSfx('click');   // 皮肤换装：使用常规按钮音效
   const el = $('bp-msg');
   const names = { classic: '✅ 已换回原皮肤（经典霓虹蓝翼）', gold: '✅ 已装备黄金之翼：机翼金色发光！', silver: '✅ 已装备冷银之翼：机翼冷银发光！', feather: '✅ 已装备 I can fly：纯白羽毛翼，可触发高空飞行！' };
   el.textContent = names[name];
@@ -4996,7 +5005,7 @@ function toggleSound() {
   $('btn-sound').classList.toggle('off', !S.soundOn);
   $('snd-label').textContent = S.soundOn ? 'ON' : 'OFF';
   audioDiag();
-  if (S.soundOn) AudioSys.play('click');
+  if (S.soundOn) playSfx('click');
 }
 /* 界面装饰元素随状态显隐：声音按钮（非战斗界面）/ 移动端按钮（战斗界面） */
 function updateChrome() {
